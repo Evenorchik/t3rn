@@ -1,4 +1,29 @@
-#!/bin/bash
+# Function for removing the node
+remove_node() {
+    echo -e "\n${BOLD}${RED}⚠️ Removing T3rn Executor Node...${NC}\n"
+
+    echo -e "${WHITE}[${CYAN}1/3${WHITE}] ${GREEN}➜ ${WHITE}⏹️ Stopping service...${NC}"
+    # Stop and remove service
+    sudo systemctl stop t3rn-executor
+    sudo systemctl disable t3rn-executor
+    sudo rm /etc/systemd/system/t3rn-executor.service
+    sudo systemctl daemon-reload
+    success_message "Service stopped and removed"
+
+    echo -e "${WHITE}[${CYAN}2/3${WHITE}] ${GREEN}➜ ${WHITE}♻️ Removing node files...${NC}"
+    # Remove node directory
+    rm -rf ~/t3rn
+    success_message "Node files removed"
+    
+    echo -e "${WHITE}[${CYAN}3/3${WHITE}] ${GREEN}➜ ${WHITE}🧹 Cleaning up environment...${NC}"
+    # Remove any leftover files
+    rm -f ~/t3rn-executor-*.log
+    success_message "Environment cleaned"
+
+    echo -e "\n${PURPLE}═════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}✓ T3rn Executor Node successfully removed from system!${NC}"
+    echo -e "${PURPLE}═════════════════════════════════════════════════════════════════════${NC}\n"
+}#!/bin/bash
 
 # Text colors
 RED='\033[0;31m'
@@ -61,12 +86,6 @@ display_logo() {
     echo -e "\n${BOLD}${WHITE}╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮${NC}"
     echo -e "${BOLD}${WHITE}│      🔷 T3rn Executor Node Wizard      │${NC}"
     echo -e "${BOLD}${WHITE}╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯${NC}\n"
-    
-    # Display the warning about screen session
-    echo -e "${BOLD}${RED}╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮${NC}"
-    echo -e "${BOLD}${RED}│  MAKE SURE YOU'VE CREATED AND STARTED A SCREEN SESSION BEFORE CONTINUING!     │${NC}"
-    echo -e "${BOLD}${RED}╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯${NC}\n"
-    sleep 2
 }
 
 # Function for displaying menu
@@ -79,7 +98,8 @@ print_menu() {
     echo -e "${WHITE}[${CYAN}4${WHITE}] ${GREEN}➜ ${WHITE}🔌  Change RPC Endpoints${NC}"
     echo -e "${WHITE}[${CYAN}5${WHITE}] ${GREEN}➜ ${WHITE}🔧  Change Gas Settings${NC}"
     echo -e "${WHITE}[${CYAN}6${WHITE}] ${GREEN}➜ ${WHITE}🔑  Change Private Key${NC}"
-    echo -e "${WHITE}[${CYAN}7${WHITE}] ${GREEN}➜ ${WHITE}🚶  Exit${NC}\n"
+    echo -e "${WHITE}[${CYAN}7${WHITE}] ${GREEN}➜ ${WHITE}♻️  Remove Node${NC}"
+    echo -e "${WHITE}[${CYAN}8${WHITE}] ${GREEN}➜ ${WHITE}🚶  Exit${NC}\n"
 }
 
 # Function for RPC submenu
@@ -101,13 +121,10 @@ print_rpc_submenu() {
 install_node() {
     echo -e "\n${BOLD}${BLUE}⚡ Installing T3rn Executor Node...${NC}\n"
 
-    echo -e "${WHITE}[${CYAN}1/5${WHITE}] ${GREEN}➜ ${WHITE}⚒️ Installing dependencies...${NC}"
+    echo -e "${WHITE}[${CYAN}1/6${WHITE}] ${GREEN}➜ ${WHITE}⚒️ Installing dependencies...${NC}"
     install_dependencies
 
-    echo -e "${WHITE}[${CYAN}2/5${WHITE}] ${GREEN}➜ ${WHITE}🔑 Setting up private key...${NC}"
-    set_private_key
-
-    echo -e "${WHITE}[${CYAN}3/5${WHITE}] ${GREEN}➜ ${WHITE}📥 Downloading and setting up the node...${NC}"
+    echo -e "${WHITE}[${CYAN}2/6${WHITE}] ${GREEN}➜ ${WHITE}📥 Downloading and setting up the node...${NC}"
     # Create and navigate to t3rn directory
     mkdir -p ~/t3rn
     cd ~/t3rn
@@ -140,8 +157,14 @@ install_node() {
         "blst": ["https://sepolia.blast.io", "https://endpoints.omniatech.io/v1/blast/sepolia/public"]
     }'
     
+    echo -e "${WHITE}[${CYAN}3/6${WHITE}] ${GREEN}➜ ${WHITE}🔑 Setting up private key...${NC}"
+    set_private_key
+    
+    echo -e "${WHITE}[${CYAN}4/6${WHITE}] ${GREEN}➜ ${WHITE}⛽ Setting up gas settings...${NC}"
+    set_gas_settings
+    
     # Create the environment file
-    echo -e "${WHITE}[${CYAN}4/5${WHITE}] ${GREEN}➜ ${WHITE}⚙️ Creating environment file...${NC}"
+    echo -e "${WHITE}[${CYAN}5/6${WHITE}] ${GREEN}➜ ${WHITE}⚙️ Creating environment file...${NC}"
     cat > ~/t3rn/executor.env << EOF
 ENVIRONMENT=${ENVIRONMENT}
 LOG_LEVEL=${LOG_LEVEL}
@@ -155,7 +178,7 @@ RPC_ENDPOINTS='${RPC_ENDPOINTS}'
 EOF
     success_message "Environment file created at ~/t3rn/executor.env"
     
-    echo -e "${WHITE}[${CYAN}5/5${WHITE}] ${GREEN}➜ ${WHITE}▶️ Creating startup script...${NC}"
+    echo -e "${WHITE}[${CYAN}6/6${WHITE}] ${GREEN}➜ ${WHITE}▶️ Creating and executing startup script...${NC}"
     # Create a startup script
     cat > ~/t3rn/start_executor.sh << 'EOF'
 #!/bin/bash
@@ -169,9 +192,47 @@ EOF
     chmod +x ~/t3rn/start_executor.sh
     success_message "Startup script created"
     
+    # Create systemd service
+    echo -e "${WHITE}[${CYAN}6/6${WHITE}] ${GREEN}➜ ${WHITE}▶️ Creating and starting systemd service...${NC}"
+    
+    # Define current user name and home directory
+    USERNAME=$(whoami)
+    HOME_DIR=$(eval echo ~$USERNAME)
+    
+    # Create service file
+    sudo bash -c "cat > /etc/systemd/system/t3rn-executor.service << EOF
+[Unit]
+Description=T3rn Executor Node
+After=network.target
+
+[Service]
+User=$USERNAME
+WorkingDirectory=$HOME_DIR/t3rn/executor/executor/bin
+EnvironmentFile=$HOME_DIR/t3rn/executor.env
+ExecStart=$HOME_DIR/t3rn/executor/executor/bin/executor
+Restart=on-failure
+RestartSec=10
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+EOF"
+
+    # Enable and start service
+    sudo systemctl daemon-reload
+    sudo systemctl enable t3rn-executor
+    sudo systemctl start t3rn-executor
+    
+    # Check if service started successfully
+    if sudo systemctl is-active --quiet t3rn-executor; then
+        success_message "T3rn Executor Node service started successfully"
+    else
+        error_message "Failed to start T3rn Executor Node service. Check logs for details."
+    fi
+    
     echo -e "\n${PURPLE}═════════════════════════════════════════════════════════════════════${NC}"
-    echo -e "${GREEN}✓ T3rn Executor Node successfully installed!${NC}"
-    echo -e "${YELLOW}ℹ️ To start the node, run:${NC} ${CYAN}~/t3rn/start_executor.sh${NC}"
+    echo -e "${GREEN}✓ T3rn Executor Node successfully installed and started!${NC}"
+    echo -e "${YELLOW}ℹ️ To check node logs, run:${NC} ${CYAN}sudo journalctl -u t3rn-executor -f --no-hostname${NC}"
     echo -e "${PURPLE}═════════════════════════════════════════════════════════════════════${NC}\n"
 }
 
@@ -234,9 +295,47 @@ update_node() {
         success_message "Environment file restored"
     fi
     
+    # Create systemd service
+    echo -e "${WHITE}[${CYAN}4/4${WHITE}] ${GREEN}➜ ${WHITE}▶️ Creating and starting systemd service...${NC}"
+    
+    # Define current user name and home directory
+    USERNAME=$(whoami)
+    HOME_DIR=$(eval echo ~$USERNAME)
+    
+    # Create service file
+    sudo bash -c "cat > /etc/systemd/system/t3rn-executor.service << EOF
+[Unit]
+Description=T3rn Executor Node
+After=network.target
+
+[Service]
+User=$USERNAME
+WorkingDirectory=$HOME_DIR/t3rn/executor/executor/bin
+EnvironmentFile=$HOME_DIR/t3rn/executor.env
+ExecStart=$HOME_DIR/t3rn/executor/executor/bin/executor
+Restart=on-failure
+RestartSec=10
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+EOF"
+
+    # Enable and start service
+    sudo systemctl daemon-reload
+    sudo systemctl enable t3rn-executor
+    sudo systemctl start t3rn-executor
+    
+    # Check if service started successfully
+    if sudo systemctl is-active --quiet t3rn-executor; then
+        success_message "T3rn Executor Node service started successfully"
+    else
+        error_message "Failed to start T3rn Executor Node service. Check logs for details."
+    fi
+    
     echo -e "\n${PURPLE}═════════════════════════════════════════════════════════════════════${NC}"
-    echo -e "${GREEN}✓ T3rn Executor Node successfully updated!${NC}"
-    echo -e "${YELLOW}ℹ️ To start the node, run:${NC} ${CYAN}~/t3rn/start_executor.sh${NC}"
+    echo -e "${GREEN}✓ T3rn Executor Node successfully updated and started!${NC}"
+    echo -e "${YELLOW}ℹ️ To check node logs, run:${NC} ${CYAN}sudo journalctl -u t3rn-executor -f --no-hostname${NC}"
     echo -e "${PURPLE}═════════════════════════════════════════════════════════════════════${NC}\n"
 }
 
@@ -314,7 +413,7 @@ change_rpc() {
 
 # Function for setting up private key
 set_private_key() {
-    echo -e "${YELLOW}🔑 Enter your private key (without '0x' prefix):${NC}"
+    echo -e "${YELLOW}🔑 Enter your private key (with or without '0x' prefix):${NC}"
     read -s -p "➜ " private_key
     echo
     
@@ -324,8 +423,10 @@ set_private_key() {
         return
     fi
     
-    # Remove 0x prefix if present
-    private_key=$(echo "$private_key" | sed 's/^0x//')
+    # Add 0x prefix if not present
+    if [[ ! "$private_key" =~ ^0x ]]; then
+        private_key="0x$private_key"
+    fi
     
     # Update the global variable
     PRIVATE_KEY_LOCAL="$private_key"
@@ -444,11 +545,14 @@ while true; do
             set_private_key
             ;;
         7)
+            remove_node
+            ;;
+        8)
             echo -e "\n${GREEN}👋 Goodbye!${NC}\n"
             exit 0
             ;;
         *)
-            error_message "Invalid choice! Please enter a number from 1 to 7."
+            error_message "Invalid choice! Please enter a number from 1 to 8."
             ;;
     esac
     
