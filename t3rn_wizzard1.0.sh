@@ -1,4 +1,4 @@
-# Function for removing the node
+done# Function for removing the node
 remove_node() {
     echo -e "\n${BOLD}${RED}⚠️ Removing T3rn Executor Node...${NC}\n"
 
