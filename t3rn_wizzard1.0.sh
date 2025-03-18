@@ -1,29 +1,4 @@
-done# Function for removing the node
-remove_node() {
-    echo -e "\n${BOLD}${RED}⚠️ Removing T3rn Executor Node...${NC}\n"
-
-    echo -e "${WHITE}[${CYAN}1/3${WHITE}] ${GREEN}➜ ${WHITE}⏹️ Stopping service...${NC}"
-    # Stop and remove service
-    sudo systemctl stop t3rn-executor
-    sudo systemctl disable t3rn-executor
-    sudo rm /etc/systemd/system/t3rn-executor.service
-    sudo systemctl daemon-reload
-    success_message "Service stopped and removed"
-
-    echo -e "${WHITE}[${CYAN}2/3${WHITE}] ${GREEN}➜ ${WHITE}♻️ Removing node files...${NC}"
-    # Remove node directory
-    rm -rf ~/t3rn
-    success_message "Node files removed"
-    
-    echo -e "${WHITE}[${CYAN}3/3${WHITE}] ${GREEN}➜ ${WHITE}🧹 Cleaning up environment...${NC}"
-    # Remove any leftover files
-    rm -f ~/t3rn-executor-*.log
-    success_message "Environment cleaned"
-
-    echo -e "\n${PURPLE}═════════════════════════════════════════════════════════════════════${NC}"
-    echo -e "${GREEN}✓ T3rn Executor Node successfully removed from system!${NC}"
-    echo -e "${PURPLE}═════════════════════════════════════════════════════════════════════${NC}\n"
-}#!/bin/bash
+#!/bin/bash
 
 # Text colors
 RED='\033[0;31m'
@@ -90,7 +65,6 @@ display_logo() {
 
 # Function for displaying menu
 print_menu() {
-    
     echo -e "${BOLD}${BLUE}⚒️ Available actions:${NC}\n"
     echo -e "${WHITE}[${CYAN}1${WHITE}] ${GREEN}➜ ${WHITE}⚙️  Install Node${NC}"
     echo -e "${WHITE}[${CYAN}2${WHITE}] ${GREEN}➜ ${WHITE}🔄  Update Node${NC}"
@@ -177,20 +151,6 @@ ENABLED_NETWORKS=${ENABLED_NETWORKS}
 RPC_ENDPOINTS='${RPC_ENDPOINTS}'
 EOF
     success_message "Environment file created at ~/t3rn/executor.env"
-    
-    echo -e "${WHITE}[${CYAN}6/6${WHITE}] ${GREEN}➜ ${WHITE}▶️ Creating and executing startup script...${NC}"
-    # Create a startup script
-    cat > ~/t3rn/start_executor.sh << 'EOF'
-#!/bin/bash
-cd ~/t3rn/executor/executor/bin
-set -a
-source ~/t3rn/executor.env
-set +a
-./executor
-EOF
-
-    chmod +x ~/t3rn/start_executor.sh
-    success_message "Startup script created"
     
     # Create systemd service
     echo -e "${WHITE}[${CYAN}6/6${WHITE}] ${GREEN}➜ ${WHITE}▶️ Creating and starting systemd service...${NC}"
@@ -288,14 +248,6 @@ update_node() {
     info_message "Extracting files..."
     tar -xzf executor-linux-*.tar.gz
 
-    echo -e "${WHITE}[${CYAN}4/4${WHITE}] ${GREEN}➜ ${WHITE}▶️ Restoring configuration...${NC}"
-    # Restore environment file if it was backed up
-    if [ -f ~/t3rn/executor.env.backup ]; then
-        mv ~/t3rn/executor.env.backup ~/t3rn/executor.env
-        success_message "Environment file restored"
-    fi
-    
-    # Create systemd service
     echo -e "${WHITE}[${CYAN}4/4${WHITE}] ${GREEN}➜ ${WHITE}▶️ Creating and starting systemd service...${NC}"
     
     # Define current user name and home directory
@@ -501,11 +453,38 @@ change_gas_settings() {
     set_gas_settings
 }
 
+# Function for removing the node
+remove_node() {
+    echo -e "\n${BOLD}${RED}⚠️ Removing T3rn Executor Node...${NC}\n"
+
+    echo -e "${WHITE}[${CYAN}1/3${WHITE}] ${GREEN}➜ ${WHITE}⏹️ Stopping service...${NC}"
+    # Stop and remove service
+    sudo systemctl stop t3rn-executor
+    sudo systemctl disable t3rn-executor
+    sudo rm /etc/systemd/system/t3rn-executor.service
+    sudo systemctl daemon-reload
+    success_message "Service stopped and removed"
+
+    echo -e "${WHITE}[${CYAN}2/3${WHITE}] ${GREEN}➜ ${WHITE}♻️ Removing node files...${NC}"
+    # Remove node directory
+    rm -rf ~/t3rn
+    success_message "Node files removed"
+    
+    echo -e "${WHITE}[${CYAN}3/3${WHITE}] ${GREEN}➜ ${WHITE}🧹 Cleaning up environment...${NC}"
+    # Remove any leftover files
+    rm -f ~/t3rn-executor-*.log
+    success_message "Environment cleaned"
+
+    echo -e "\n${PURPLE}═════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}✓ T3rn Executor Node successfully removed from system!${NC}"
+    echo -e "${PURPLE}═════════════════════════════════════════════════════════════════════${NC}\n"
+}
+
 # Main program loop
 while true; do
     display_logo
     print_menu
-    echo -e "${BOLD}${BLUE}📝 Enter action number [1-7]:${NC} "
+    echo -e "${BOLD}${BLUE}📝 Enter action number [1-8]:${NC} "
     read -p "➜ " choice
 
     case $choice in
