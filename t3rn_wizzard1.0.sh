@@ -1,4 +1,47 @@
-#!/bin/bash
+# Function for setting up RPC endpoints for each network
+setup_rpc_endpoints() {
+    echo -e "${WHITE}[${CYAN}4/6${WHITE}] ${GREEN}➜ ${WHITE}🔌 Setting up RPC endpoints...${NC}"
+    
+    # Define networks and their codes
+    declare -A networks=(
+        ["Arbitrum Sepolia"]="arbt"
+        ["Base Sepolia"]="bast"
+        ["Blast Sepolia"]="blst"
+        ["Unichain Sepolia"]="unit"
+        ["Optimism Sepolia"]="opst"
+    )
+    
+    # Extract current RPC endpoints if env file exists
+    if [ -f ~/t3rn/executor.env ]; then
+        current_rpc=$(grep "RPC_ENDPOINTS" ~/t3rn/executor.env | sed "s/RPC_ENDPOINTS='//" | sed "s/'$//")
+        if [ -n "$current_rpc" ]; then
+            RPC_ENDPOINTS="$current_rpc"
+        fi
+    fi
+    
+    # For each network, ask for custom RPC
+    for network in "${!networks[@]}"; do
+        code=${networks[$network]}
+        echo -e "${YELLOW}🔌 Enter additional RPC endpoint for ${network} (press Enter to skip):${NC}"
+        read -p "➜ " new_rpc
+        
+        if [ -n "$new_rpc" ]; then
+            # Add the new RPC to the array if it doesn't already exist
+            if [[ ! "$RPC_ENDPOINTS" =~ "$new_rpc" ]]; then
+                RPC_ENDPOINTS=$(echo "$RPC_ENDPOINTS" | jq ".$code += [\"$new_rpc\"]")
+                success_message "Added RPC endpoint for ${network}"
+            else
+                info_message "This RPC endpoint is already in the list"
+            fi
+        else
+            info_message "Using default RPC endpoints for ${network}"
+        fi
+    done
+}# Function for checking logs
+check_logs() {
+    echo -e "\n${BOLD}${BLUE}📊 Checking T3rn Executor Node logs...${NC}\n"
+    sudo journalctl -u t3rn-executor -f --no-hostname
+}#!/bin/bash
 
 # Text colors
 RED='\033[0;31m'
@@ -72,8 +115,9 @@ print_menu() {
     echo -e "${WHITE}[${CYAN}4${WHITE}] ${GREEN}➜ ${WHITE}🔌  Change RPC Endpoints${NC}"
     echo -e "${WHITE}[${CYAN}5${WHITE}] ${GREEN}➜ ${WHITE}🔧  Change Gas Settings${NC}"
     echo -e "${WHITE}[${CYAN}6${WHITE}] ${GREEN}➜ ${WHITE}🔑  Change Private Key${NC}"
-    echo -e "${WHITE}[${CYAN}7${WHITE}] ${GREEN}➜ ${WHITE}♻️  Remove Node${NC}"
-    echo -e "${WHITE}[${CYAN}8${WHITE}] ${GREEN}➜ ${WHITE}🚶  Exit${NC}\n"
+    echo -e "${WHITE}[${CYAN}7${WHITE}] ${GREEN}➜ ${WHITE}📊  Check Logs${NC}"
+    echo -e "${WHITE}[${CYAN}8${WHITE}] ${GREEN}➜ ${WHITE}♻️  Remove Node${NC}"
+    echo -e "${WHITE}[${CYAN}9${WHITE}] ${GREEN}➜ ${WHITE}🚶  Exit${NC}\n"
 }
 
 # Function for RPC submenu
@@ -135,7 +179,9 @@ install_node() {
     echo -e "${WHITE}[${CYAN}3/6${WHITE}] ${GREEN}➜ ${WHITE}🔑 Setting up private key...${NC}"
     set_private_key
     
-    echo -e "${WHITE}[${CYAN}4/6${WHITE}] ${GREEN}➜ ${WHITE}⛽ Setting up gas settings...${NC}"
+    setup_rpc_endpoints
+    
+    echo -e "${WHITE}[${CYAN}5/6${WHITE}] ${GREEN}➜ ${WHITE}⛽ Setting up gas settings...${NC}"
     set_gas_settings
     
     # Create the environment file
@@ -226,6 +272,10 @@ update_node() {
     echo -e "${WHITE}[${CYAN}3/4${WHITE}] ${GREEN}➜ ${WHITE}📥 Downloading and setting up the node...${NC}"
     cd ~/t3rn
     
+    # Define current user name and home directory
+    USERNAME=$(whoami)
+    HOME_DIR=$(eval echo ~$USERNAME)
+    
     # Set environment variables if not backed up
     if [ ! -f ~/t3rn/executor.env.backup ]; then
         ENVIRONMENT="testnet"
@@ -255,6 +305,14 @@ update_node() {
     # Extract the archive
     info_message "Extracting files..."
     tar -xzf executor-linux-*.tar.gz
+    
+    echo -e "${WHITE}[${CYAN}3/4${WHITE}] ${GREEN}➜ ${WHITE}🔑 Setting up private key...${NC}"
+    set_private_key
+    
+    setup_rpc_endpoints
+    
+    echo -e "${WHITE}[${CYAN}5/6${WHITE}] ${GREEN}➜ ${WHITE}⛽ Setting up gas settings...${NC}"
+    set_gas_settings
 
     echo -e "${WHITE}[${CYAN}4/4${WHITE}] ${GREEN}➜ ${WHITE}▶️ Creating and starting systemd service...${NC}"
     
@@ -395,14 +453,7 @@ set_private_key() {
     
     # Update the global variable
     PRIVATE_KEY_LOCAL="$private_key"
-    
-    # Update the environment file if it exists
-    if [ -f ~/t3rn/executor.env ]; then
-        sed -i "s/^PRIVATE_KEY_LOCAL=.*/PRIVATE_KEY_LOCAL=$private_key/" ~/t3rn/executor.env
-        success_message "Private key updated"
-    else
-        warning_message "No environment file found. Private key will be applied on installation."
-    fi
+    success_message "Private key set"
 }
 
 # Function for setting gas settings
@@ -410,7 +461,7 @@ set_gas_settings() {
     echo -e "\n${BOLD}${BLUE}⛽ Configure Gas Settings...${NC}\n"
     
     # Get gas settings from user
-    echo -e "${YELLOW}🔢 Enter max L3 gas price (in GWEI) - controls when executor stops if gas rises above this level:${NC}"
+    echo -e "${YELLOW}🔢 Enter max L3 gas price (in GWEI) - controls when executor stops if gas rises above this level (default is 1000 GWEI):${NC}"
     read -p "➜ " max_gas_price
     
     echo -e "${YELLOW}🔢 Enter prometheus port (default is 9090, but use 9091 if 9090 is already in use):${NC}"
@@ -418,8 +469,8 @@ set_gas_settings() {
     
     # Validate input
     if [ -z "$max_gas_price" ]; then
-        max_gas_price="100"  # Default value from docs
-        info_message "Using default max gas price: 100 GWEI"
+        max_gas_price="1000"  # Default value from docs
+        info_message "Using default max gas price: 1000 GWEI"
     fi
     
     if [ -z "$prometheus_port" ]; then
@@ -538,14 +589,17 @@ while true; do
             set_private_key
             ;;
         7)
-            remove_node
+            check_logs
             ;;
         8)
+            remove_node
+            ;;
+        9)
             echo -e "\n${GREEN}👋 Goodbye!${NC}\n"
             exit 0
             ;;
         *)
-            error_message "Invalid choice! Please enter a number from 1 to 8."
+            error_message "Invalid choice! Please enter a number from 1 to 9."
             ;;
     esac
     
