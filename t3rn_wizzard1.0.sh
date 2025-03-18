@@ -112,16 +112,17 @@ install_node() {
     info_message "Extracting files..."
     tar -xzf executor-linux-*.tar.gz
     
-    # Set environment variables
+    # Set default environment variables based on documentation
     ENVIRONMENT="testnet"
     LOG_LEVEL="debug"
     LOG_PRETTY="false"
     EXECUTOR_PROCESS_BIDS_ENABLED="true"
     EXECUTOR_PROCESS_ORDERS_ENABLED="true"
     EXECUTOR_PROCESS_CLAIMS_ENABLED="true"
+    EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API="true"
     ENABLED_NETWORKS="blast-sepolia,unichain-sepolia,arbitrum-sepolia,base-sepolia,optimism-sepolia,l2rn"
     
-    # Default RPC endpoints
+    # Default RPC endpoints from official documentation
     RPC_ENDPOINTS='{
         "l2rn": ["https://b2n.rpc.caldera.xyz/http"],
         "arbt": ["https://arbitrum-sepolia.drpc.org", "https://sepolia-rollup.arbitrum.io/rpc"],
@@ -149,6 +150,8 @@ EXECUTOR_PROCESS_CLAIMS_ENABLED=${EXECUTOR_PROCESS_CLAIMS_ENABLED}
 PRIVATE_KEY_LOCAL=${PRIVATE_KEY_LOCAL}
 ENABLED_NETWORKS=${ENABLED_NETWORKS}
 RPC_ENDPOINTS='${RPC_ENDPOINTS}'
+EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API=true
+PROMETHEUS_PORT=9091
 EOF
     success_message "Environment file created at ~/t3rn/executor.env"
     
@@ -159,7 +162,7 @@ EOF
     USERNAME=$(whoami)
     HOME_DIR=$(eval echo ~$USERNAME)
     
-    # Create service file
+    # Create service file with environment variables from the env file
     sudo bash -c "cat > /etc/systemd/system/t3rn-executor.service << EOF
 [Unit]
 Description=T3rn Executor Node
@@ -193,6 +196,11 @@ EOF"
     echo -e "\n${PURPLE}═════════════════════════════════════════════════════════════════════${NC}"
     echo -e "${GREEN}✓ T3rn Executor Node successfully installed and started!${NC}"
     echo -e "${YELLOW}ℹ️ To check node logs, run:${NC} ${CYAN}sudo journalctl -u t3rn-executor -f --no-hostname${NC}"
+    if grep -q "PROMETHEUS_PORT=9091" ~/t3rn/executor.env; then
+        echo -e "${YELLOW}ℹ️ Node is using port 9091 for Prometheus metrics${NC}"
+    else
+        echo -e "${YELLOW}ℹ️ Node is using default Prometheus port. If you have port conflicts, run option 3 to change it.${NC}"
+    fi
     echo -e "${PURPLE}═════════════════════════════════════════════════════════════════════${NC}\n"
 }
 
@@ -288,6 +296,11 @@ EOF"
     echo -e "\n${PURPLE}═════════════════════════════════════════════════════════════════════${NC}"
     echo -e "${GREEN}✓ T3rn Executor Node successfully updated and started!${NC}"
     echo -e "${YELLOW}ℹ️ To check node logs, run:${NC} ${CYAN}sudo journalctl -u t3rn-executor -f --no-hostname${NC}"
+    if grep -q "PROMETHEUS_PORT=9091" ~/t3rn/executor.env; then
+        echo -e "${YELLOW}ℹ️ Node is using port 9091 for Prometheus metrics${NC}"
+    else
+        echo -e "${YELLOW}ℹ️ Node is using default Prometheus port. If you have port conflicts, run option 3 to change it.${NC}"
+    fi
     echo -e "${PURPLE}═════════════════════════════════════════════════════════════════════${NC}\n"
 }
 
@@ -397,52 +410,53 @@ set_gas_settings() {
     echo -e "\n${BOLD}${BLUE}⛽ Configure Gas Settings...${NC}\n"
     
     # Get gas settings from user
-    echo -e "${YELLOW}🔢 Enter max gas price (in GWEI):${NC}"
+    echo -e "${YELLOW}🔢 Enter max L3 gas price (in GWEI) - controls when executor stops if gas rises above this level:${NC}"
     read -p "➜ " max_gas_price
     
-    echo -e "${YELLOW}🔢 Enter max priority fee (in GWEI):${NC}"
-    read -p "➜ " max_priority_fee
-    
-    echo -e "${YELLOW}🔢 Enter gas limit:${NC}"
-    read -p "➜ " gas_limit
+    echo -e "${YELLOW}🔢 Enter prometheus port (default is 9090, but use 9091 if 9090 is already in use):${NC}"
+    read -p "➜ " prometheus_port
     
     # Validate input
-    if [ -z "$max_gas_price" ] || [ -z "$max_priority_fee" ] || [ -z "$gas_limit" ]; then
-        error_message "Gas settings cannot be empty"
-        return
+    if [ -z "$max_gas_price" ]; then
+        max_gas_price="100"  # Default value from docs
+        info_message "Using default max gas price: 100 GWEI"
+    fi
+    
+    if [ -z "$prometheus_port" ]; then
+        prometheus_port="9091"  # Default to alternate port
+        info_message "Using default prometheus port: 9091"
     fi
     
     # Create or update gas settings in environment file
     if [ -f ~/t3rn/executor.env ]; then
-        # Check if gas settings already exist
-        if grep -q "GAS_SETTINGS" ~/t3rn/executor.env; then
-            # Update existing settings
-            sed -i "s/^GAS_MAX_PRICE=.*/GAS_MAX_PRICE=$max_gas_price/" ~/t3rn/executor.env
-            sed -i "s/^GAS_MAX_PRIORITY_FEE=.*/GAS_MAX_PRIORITY_FEE=$max_priority_fee/" ~/t3rn/executor.env
-            sed -i "s/^GAS_LIMIT=.*/GAS_LIMIT=$gas_limit/" ~/t3rn/executor.env
-        else
-            # Add new settings
-            echo "GAS_MAX_PRICE=$max_gas_price" >> ~/t3rn/executor.env
-            echo "GAS_MAX_PRIORITY_FEE=$max_priority_fee" >> ~/t3rn/executor.env
-            echo "GAS_LIMIT=$gas_limit" >> ~/t3rn/executor.env
+        # Update existing settings
+        sed -i "s/^EXECUTOR_MAX_L3_GAS_PRICE=.*/EXECUTOR_MAX_L3_GAS_PRICE=$max_gas_price/" ~/t3rn/executor.env
+        sed -i "s/^PROMETHEUS_PORT=.*/PROMETHEUS_PORT=$prometheus_port/" ~/t3rn/executor.env
+        
+        # Add settings if they don't exist
+        if ! grep -q "EXECUTOR_MAX_L3_GAS_PRICE" ~/t3rn/executor.env; then
+            echo "EXECUTOR_MAX_L3_GAS_PRICE=$max_gas_price" >> ~/t3rn/executor.env
+        fi
+        
+        if ! grep -q "PROMETHEUS_PORT" ~/t3rn/executor.env; then
+            echo "PROMETHEUS_PORT=$prometheus_port" >> ~/t3rn/executor.env
         fi
         success_message "Gas settings updated"
     else
         # Create environment file with gas settings
         mkdir -p ~/t3rn
         cat > ~/t3rn/executor.env << EOF
-ENVIRONMENT=${ENVIRONMENT}
-LOG_LEVEL=${LOG_LEVEL}
-LOG_PRETTY=${LOG_PRETTY}
-EXECUTOR_PROCESS_BIDS_ENABLED=${EXECUTOR_PROCESS_BIDS_ENABLED}
-EXECUTOR_PROCESS_ORDERS_ENABLED=${EXECUTOR_PROCESS_ORDERS_ENABLED}
-EXECUTOR_PROCESS_CLAIMS_ENABLED=${EXECUTOR_PROCESS_CLAIMS_ENABLED}
+ENVIRONMENT=testnet
+LOG_LEVEL=debug
+LOG_PRETTY=false
+EXECUTOR_PROCESS_BIDS_ENABLED=true
+EXECUTOR_PROCESS_ORDERS_ENABLED=true
+EXECUTOR_PROCESS_CLAIMS_ENABLED=true
 PRIVATE_KEY_LOCAL=${PRIVATE_KEY_LOCAL}
-ENABLED_NETWORKS=${ENABLED_NETWORKS}
-RPC_ENDPOINTS='${RPC_ENDPOINTS}'
-GAS_MAX_PRICE=$max_gas_price
-GAS_MAX_PRIORITY_FEE=$max_priority_fee
-GAS_LIMIT=$gas_limit
+ENABLED_NETWORKS=blast-sepolia,unichain-sepolia,arbitrum-sepolia,base-sepolia,optimism-sepolia,l2rn
+EXECUTOR_MAX_L3_GAS_PRICE=$max_gas_price
+PROMETHEUS_PORT=$prometheus_port
+EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API=true
 EOF
         success_message "Gas settings created"
     fi
