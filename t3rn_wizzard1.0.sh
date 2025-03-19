@@ -51,6 +51,41 @@ restart_service() {
     fi
 }
 
+# Function to safely update RPC_ENDPOINTS in config file
+update_rpc_in_config() {
+    local rpc_json="$1"
+    
+    # Save to temp file and validate
+    echo "$rpc_json" > /tmp/rpc_formatted.json
+    
+    # Check if JSON is valid
+    if jq empty /tmp/rpc_formatted.json &>/dev/null; then
+        # Update the environment file
+        if grep -q "RPC_ENDPOINTS" ~/t3rn/executor.env; then
+            # Create a properly escaped string
+            awk -v rpc="$(cat /tmp/rpc_formatted.json)" '{
+                if (/^RPC_ENDPOINTS=/) {
+                    print "RPC_ENDPOINTS=\x27" rpc "\x27"
+                } else {
+                    print $0
+                }
+            }' ~/t3rn/executor.env > ~/t3rn/executor.env.new
+            mv ~/t3rn/executor.env.new ~/t3rn/executor.env
+        else
+            # Add as a new line
+            echo "RPC_ENDPOINTS='$(cat /tmp/rpc_formatted.json)'" >> ~/t3rn/executor.env
+        fi
+        success_message "RPC configuration updated"
+    else
+        error_message "Invalid JSON format. RPC configuration not updated."
+        rm -f /tmp/rpc_formatted.json
+        return 1
+    fi
+    
+    rm -f /tmp/rpc_formatted.json
+    return 0
+}
+
 # Check for curl and install if not present
 if ! command -v curl &> /dev/null; then
     sudo apt update
@@ -354,27 +389,9 @@ setup_rpc_endpoints() {
     
     # If the node is already installed, update the env file directly
     if [ -f ~/t3rn/executor.env ]; then
-        # Create temporary file to store properly formatted JSON
-        echo "$RPC_ENDPOINTS" > /tmp/rpc_formatted.json
-        # Make sure the JSON is valid
-        if jq empty /tmp/rpc_formatted.json &>/dev/null; then
-            # Use awk to replace the line because sed struggles with complex JSON
-            awk -v rpc="$(cat /tmp/rpc_formatted.json)" '{
-                if (/^RPC_ENDPOINTS=/) {
-                    print "RPC_ENDPOINTS=\x27" rpc "\x27"
-                } else {
-                    print $0
-                }
-            }' ~/t3rn/executor.env > ~/t3rn/executor.env.new
-            mv ~/t3rn/executor.env.new ~/t3rn/executor.env
-            success_message "RPC endpoints updated"
-            
-            # Restart service to apply changes
-            restart_service
-        else
-            error_message "Invalid JSON format. RPC endpoints not updated."
-        fi
-        rm /tmp/rpc_formatted.json
+        update_rpc_in_config "$RPC_ENDPOINTS"
+        # Restart service to apply changes
+        restart_service
     fi
 }
 
@@ -459,28 +476,11 @@ change_rpc() {
     rm /tmp/rpc_temp.json
     
     # Update the environment file
+    # Update the environment file
     if [ -f ~/t3rn/executor.env ]; then
-        # Create temporary file to store properly formatted JSON
-        echo "$updated_rpc" > /tmp/rpc_formatted.json
-        # Make sure the JSON is valid
-        if jq empty /tmp/rpc_formatted.json &>/dev/null; then
-            # Use awk to replace the line
-            awk -v rpc="$(cat /tmp/rpc_formatted.json)" '{
-                if (/^RPC_ENDPOINTS=/) {
-                    print "RPC_ENDPOINTS=\x27" rpc "\x27"
-                } else {
-                    print $0
-                }
-            }' ~/t3rn/executor.env > ~/t3rn/executor.env.new
-            mv ~/t3rn/executor.env.new ~/t3rn/executor.env
-            success_message "RPC endpoint for ${network_name} updated"
-            
-            # Restart service to apply changes
-            restart_service
-        else
-            error_message "Invalid JSON format. RPC endpoints not updated."
-        fi
-        rm /tmp/rpc_formatted.json
+        update_rpc_in_config "$updated_rpc"
+        # Restart service to apply changes
+        restart_service
     else
         RPC_ENDPOINTS="$updated_rpc"
         success_message "RPC endpoint for ${network_name} will be applied on next install"
@@ -507,24 +507,9 @@ clear_rpc_settings() {
         }'
         
         # Update environment file with default RPC
+        # Update environment file with default RPC
         if [ -f ~/t3rn/executor.env ]; then
-            # Save default JSON to temp file
-            echo "$default_rpc" > /tmp/default_rpc.json
-            
-            # Use awk to replace the line
-            awk -v rpc="$(cat /tmp/default_rpc.json)" '{
-                if (/^RPC_ENDPOINTS=/) {
-                    print "RPC_ENDPOINTS=\x27" rpc "\x27"
-                } else {
-                    print $0
-                }
-            }' ~/t3rn/executor.env > ~/t3rn/executor.env.new
-            mv ~/t3rn/executor.env.new ~/t3rn/executor.env
-            
-            rm /tmp/default_rpc.json
-            
-            success_message "RPC endpoints reset to default values"
-            
+            update_rpc_in_config "$default_rpc"
             # Restart service to apply changes
             restart_service
         else
@@ -1051,7 +1036,7 @@ remove_node() {
 while true; do
     display_logo
     print_menu
-    echo -e "${BOLD}${BLUE}📝 Enter action number [1-10]:${NC} "
+    echo -e "${BOLD}${BLUE}📝 Enter action number [1-11]:${NC} "
     read -p "➜ " choice
 
     case $choice in
