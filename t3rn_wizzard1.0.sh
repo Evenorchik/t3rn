@@ -39,6 +39,18 @@ install_dependencies() {
     success_message "Dependencies installed"
 }
 
+# Function for restarting the node service
+restart_service() {
+    info_message "Restarting T3rn Executor Node service..."
+    sudo systemctl daemon-reload
+    sudo systemctl restart t3rn-executor
+    if sudo systemctl is-active --quiet t3rn-executor; then
+        success_message "T3rn Executor Node service restarted successfully"
+    else
+        error_message "Failed to restart T3rn Executor Node service. Check logs for details."
+    fi
+}
+
 # Check for curl and install if not present
 if ! command -v curl &> /dev/null; then
     sudo apt update
@@ -50,6 +62,7 @@ clear
 
 # Function variables that will be set during installation
 PRIVATE_KEY_LOCAL=""
+INSTALLATION_MODE="" # Will be set to "api" or "rpc"
 
 # Function for displaying welcome logo
 display_logo() {
@@ -72,9 +85,10 @@ print_menu() {
     echo -e "${WHITE}[${CYAN}4${WHITE}] ${GREEN}➜ ${WHITE}🔌  Change RPC Endpoints${NC}"
     echo -e "${WHITE}[${CYAN}5${WHITE}] ${GREEN}➜ ${WHITE}🔧  Change Gas Settings${NC}"
     echo -e "${WHITE}[${CYAN}6${WHITE}] ${GREEN}➜ ${WHITE}🔑  Change Private Key${NC}"
-    echo -e "${WHITE}[${CYAN}7${WHITE}] ${GREEN}➜ ${WHITE}📊  Check Logs${NC}"
-    echo -e "${WHITE}[${CYAN}8${WHITE}] ${GREEN}➜ ${WHITE}♻️  Remove Node${NC}"
-    echo -e "${WHITE}[${CYAN}9${WHITE}] ${GREEN}➜ ${WHITE}🚶  Exit${NC}\n"
+    echo -e "${WHITE}[${CYAN}7${WHITE}] ${GREEN}➜ ${WHITE}🔄  Toggle API/RPC Mode${NC}"
+    echo -e "${WHITE}[${CYAN}8${WHITE}] ${GREEN}➜ ${WHITE}📊  Check Logs${NC}"
+    echo -e "${WHITE}[${CYAN}9${WHITE}] ${GREEN}➜ ${WHITE}♻️  Remove Node${NC}"
+    echo -e "${WHITE}[${CYAN}10${WHITE}] ${GREEN}➜ ${WHITE}🚶  Exit${NC}\n"
 }
 
 # Function for RPC submenu
@@ -92,10 +106,90 @@ print_rpc_submenu() {
     echo -e "${WHITE}[${CYAN}6${WHITE}] ${GREEN}➜ ${WHITE}⬅️  Back to Main Menu${NC}\n"
 }
 
+# Function for choosing installation mode
+choose_installation_mode() {
+    echo -e "\n${BOLD}${WHITE}╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮${NC}"
+    echo -e "${BOLD}${WHITE}│        🔄 Choose Processing Mode        │${NC}"
+    echo -e "${BOLD}${WHITE}╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯${NC}\n"
+    
+    echo -e "${BOLD}${BLUE}⚒️ Select how you want to process orders:${NC}\n"
+    echo -e "${WHITE}[${CYAN}1${WHITE}] ${GREEN}➜ ${WHITE}🔌  Via API (Recommended for higher reliability)${NC}"
+    echo -e "${WHITE}[${CYAN}2${WHITE}] ${GREEN}➜ ${WHITE}🌐  Via RPC (Requires manual RPC configuration)${NC}\n"
+    
+    echo -e "${BOLD}${BLUE}📝 Enter selection [1-2]:${NC} "
+    read -p "➜ " mode_choice
+    
+    case $mode_choice in
+        1)
+            INSTALLATION_MODE="api"
+            EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API="true"
+            success_message "API mode selected for processing orders"
+            ;;
+        2)
+            INSTALLATION_MODE="rpc"
+            EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API="false"
+            success_message "RPC mode selected for processing orders"
+            ;;
+        *)
+            error_message "Invalid choice. Defaulting to API mode."
+            INSTALLATION_MODE="api"
+            EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API="true"
+            ;;
+    esac
+}
+
+# Function for toggling between API and RPC mode
+toggle_api_rpc_mode() {
+    echo -e "\n${BOLD}${BLUE}🔄 Toggle between API and RPC processing mode...${NC}\n"
+    
+    # Check current mode
+    if [ -f ~/t3rn/executor.env ]; then
+        current_mode=$(grep "EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API" ~/t3rn/executor.env | cut -d= -f2)
+    else
+        error_message "Environment file not found. Please install the node first."
+        return
+    fi
+    
+    if [ "$current_mode" = "true" ]; then
+        echo -e "${YELLOW}Current mode: API processing${NC}"
+        echo -e "${YELLOW}Do you want to switch to RPC processing? (y/n)${NC}"
+        read -p "➜ " switch_choice
+        
+        if [[ "$switch_choice" =~ ^[Yy]$ ]]; then
+            sed -i "s/EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API=true/EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API=false/" ~/t3rn/executor.env
+            success_message "Switched to RPC processing mode"
+            
+            # Ask if user wants to configure RPC endpoints
+            echo -e "${YELLOW}Do you want to configure RPC endpoints now? (y/n)${NC}"
+            read -p "➜ " config_rpc
+            
+            if [[ "$config_rpc" =~ ^[Yy]$ ]]; then
+                setup_rpc_endpoints
+            fi
+        else
+            info_message "Keeping API processing mode"
+        fi
+    else
+        echo -e "${YELLOW}Current mode: RPC processing${NC}"
+        echo -e "${YELLOW}Do you want to switch to API processing? (y/n)${NC}"
+        read -p "➜ " switch_choice
+        
+        if [[ "$switch_choice" =~ ^[Yy]$ ]]; then
+            sed -i "s/EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API=false/EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API=true/" ~/t3rn/executor.env
+            success_message "Switched to API processing mode"
+        else
+            info_message "Keeping RPC processing mode"
+        fi
+    fi
+    
+    # Restart service to apply changes
+    restart_service
+}
+
 # Function for setting up private key
 set_private_key() {
-    echo -e "${YELLOW}🔑 Enter your private key (with or without '0x' prefix):${NC}"
-    read -s -p "➜ " private_key
+    echo -e "${YELLOW}🔑 Enter your private key (with '0x' prefix):${NC}"
+    read -p "➜ " private_key
     echo
     
     if [ -z "$private_key" ]; then
@@ -111,7 +205,17 @@ set_private_key() {
     
     # Update the global variable
     PRIVATE_KEY_LOCAL="$private_key"
-    success_message "Private key set"
+    
+    # If the node is already installed, update the env file directly
+    if [ -f ~/t3rn/executor.env ]; then
+        sed -i "s/^PRIVATE_KEY_LOCAL=.*/PRIVATE_KEY_LOCAL=$private_key/" ~/t3rn/executor.env
+        success_message "Private key updated"
+        
+        # Restart service to apply changes
+        restart_service
+    else
+        success_message "Private key set"
+    fi
 }
 
 # Function for setting gas settings
@@ -151,6 +255,9 @@ set_gas_settings() {
             echo "PROMETHEUS_PORT=$prometheus_port" >> ~/t3rn/executor.env
         fi
         success_message "Gas settings updated"
+        
+        # Restart service to apply changes
+        restart_service
     else
         # Create environment file with gas settings
         mkdir -p ~/t3rn
@@ -165,7 +272,7 @@ PRIVATE_KEY_LOCAL=${PRIVATE_KEY_LOCAL}
 ENABLED_NETWORKS=blast-sepolia,unichain-sepolia,arbitrum-sepolia,base-sepolia,optimism-sepolia,l2rn
 EXECUTOR_MAX_L3_GAS_PRICE=$max_gas_price
 PROMETHEUS_PORT=$prometheus_port
-EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API=true
+EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API=${EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API:-true}
 EOF
         success_message "Gas settings created"
     fi
@@ -215,6 +322,15 @@ setup_rpc_endpoints() {
             info_message "Using default RPC endpoints for ${network}"
         fi
     done
+    
+    # If the node is already installed, update the env file directly
+    if [ -f ~/t3rn/executor.env ]; then
+        sed -i "s|RPC_ENDPOINTS='.*'|RPC_ENDPOINTS='$RPC_ENDPOINTS'|" ~/t3rn/executor.env
+        success_message "RPC endpoints updated"
+        
+        # Restart service to apply changes
+        restart_service
+    fi
 }
 
 # Function for changing RPC endpoints
@@ -280,6 +396,9 @@ change_rpc() {
         if [ -f ~/t3rn/executor.env ]; then
             sed -i "s|RPC_ENDPOINTS='.*'|RPC_ENDPOINTS='$updated_rpc'|" ~/t3rn/executor.env
             success_message "RPC endpoint for ${network_name} updated"
+            
+            # Restart service to apply changes
+            restart_service
         else
             RPC_ENDPOINTS="$updated_rpc"
             success_message "RPC endpoint for ${network_name} will be applied on next install"
@@ -299,10 +418,13 @@ check_logs() {
 install_node() {
     echo -e "\n${BOLD}${BLUE}⚡ Installing T3rn Executor Node...${NC}\n"
 
-    echo -e "${WHITE}[${CYAN}1/6${WHITE}] ${GREEN}➜ ${WHITE}⚒️ Installing dependencies...${NC}"
+    echo -e "${WHITE}[${CYAN}1/7${WHITE}] ${GREEN}➜ ${WHITE}🔄 Choose processing mode (API or RPC)...${NC}"
+    choose_installation_mode
+
+    echo -e "${WHITE}[${CYAN}2/7${WHITE}] ${GREEN}➜ ${WHITE}⚒️ Installing dependencies...${NC}"
     install_dependencies
 
-    echo -e "${WHITE}[${CYAN}2/6${WHITE}] ${GREEN}➜ ${WHITE}📥 Downloading and setting up the node...${NC}"
+    echo -e "${WHITE}[${CYAN}3/7${WHITE}] ${GREEN}➜ ${WHITE}📥 Downloading and setting up the node...${NC}"
     # Create and navigate to t3rn directory
     mkdir -p ~/t3rn
     cd ~/t3rn
@@ -323,7 +445,6 @@ install_node() {
     EXECUTOR_PROCESS_BIDS_ENABLED="true"
     EXECUTOR_PROCESS_ORDERS_ENABLED="true"
     EXECUTOR_PROCESS_CLAIMS_ENABLED="true"
-    EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API="true"
     ENABLED_NETWORKS="blast-sepolia,unichain-sepolia,arbitrum-sepolia,base-sepolia,optimism-sepolia,l2rn"
     
     # Default RPC endpoints from official documentation
@@ -336,16 +457,22 @@ install_node() {
         "blst": ["https://sepolia.blast.io", "https://endpoints.omniatech.io/v1/blast/sepolia/public"]
     }'
     
-    echo -e "${WHITE}[${CYAN}3/6${WHITE}] ${GREEN}➜ ${WHITE}🔑 Setting up private key...${NC}"
+    echo -e "${WHITE}[${CYAN}4/7${WHITE}] ${GREEN}➜ ${WHITE}🔑 Setting up private key...${NC}"
     set_private_key
     
-    setup_rpc_endpoints
+    # Setup RPC endpoints only if RPC mode is selected
+    if [ "$INSTALLATION_MODE" = "rpc" ]; then
+        echo -e "${WHITE}[${CYAN}5/7${WHITE}] ${GREEN}➜ ${WHITE}🔌 Setting up RPC endpoints...${NC}"
+        setup_rpc_endpoints
+    else
+        info_message "Skipping RPC configuration as API mode is selected"
+    fi
     
-    echo -e "${WHITE}[${CYAN}5/6${WHITE}] ${GREEN}➜ ${WHITE}⛽ Setting up gas settings...${NC}"
+    echo -e "${WHITE}[${CYAN}6/7${WHITE}] ${GREEN}➜ ${WHITE}⛽ Setting up gas settings...${NC}"
     set_gas_settings
     
     # Create the environment file
-    echo -e "${WHITE}[${CYAN}5/6${WHITE}] ${GREEN}➜ ${WHITE}⚙️ Creating environment file...${NC}"
+    echo -e "${WHITE}[${CYAN}7/7${WHITE}] ${GREEN}➜ ${WHITE}⚙️ Creating environment file...${NC}"
     cat > ~/t3rn/executor.env << EOF
 ENVIRONMENT=${ENVIRONMENT}
 LOG_LEVEL=${LOG_LEVEL}
@@ -355,14 +482,26 @@ EXECUTOR_PROCESS_ORDERS_ENABLED=${EXECUTOR_PROCESS_ORDERS_ENABLED}
 EXECUTOR_PROCESS_CLAIMS_ENABLED=${EXECUTOR_PROCESS_CLAIMS_ENABLED}
 PRIVATE_KEY_LOCAL=${PRIVATE_KEY_LOCAL}
 ENABLED_NETWORKS=${ENABLED_NETWORKS}
-RPC_ENDPOINTS='${RPC_ENDPOINTS}'
-EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API=true
-PROMETHEUS_PORT=9091
+EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API=${EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API}
 EOF
+
+    # Add RPC endpoints only if RPC mode is selected
+    if [ "$INSTALLATION_MODE" = "rpc" ]; then
+        echo "RPC_ENDPOINTS='${RPC_ENDPOINTS}'" >> ~/t3rn/executor.env
+    fi
+    
+    # Add gas settings
+    echo "PROMETHEUS_PORT=9091" >> ~/t3rn/executor.env
+    if [ -n "$max_gas_price" ]; then
+        echo "EXECUTOR_MAX_L3_GAS_PRICE=$max_gas_price" >> ~/t3rn/executor.env
+    else
+        echo "EXECUTOR_MAX_L3_GAS_PRICE=1000" >> ~/t3rn/executor.env
+    fi
+    
     success_message "Environment file created at ~/t3rn/executor.env"
     
     # Create systemd service
-    echo -e "${WHITE}[${CYAN}6/6${WHITE}] ${GREEN}➜ ${WHITE}▶️ Creating and starting systemd service...${NC}"
+    echo -e "${WHITE}[${CYAN}7/7${WHITE}] ${GREEN}➜ ${WHITE}▶️ Creating and starting systemd service...${NC}"
     
     # Define current user name and home directory
     USERNAME=$(whoami)
@@ -401,6 +540,11 @@ EOF"
     
     echo -e "\n${PURPLE}═════════════════════════════════════════════════════════════════════${NC}"
     echo -e "${GREEN}✓ T3rn Executor Node successfully installed and started!${NC}"
+    if [ "$INSTALLATION_MODE" = "api" ]; then
+        echo -e "${YELLOW}ℹ️ Node is configured to process orders via API for higher reliability${NC}"
+    else
+        echo -e "${YELLOW}ℹ️ Node is configured to process orders via RPC${NC}"
+    fi
     echo -e "${YELLOW}ℹ️ To check node logs, run:${NC} ${CYAN}sudo journalctl -u t3rn-executor -f --no-hostname${NC}"
     if grep -q "PROMETHEUS_PORT=9091" ~/t3rn/executor.env; then
         echo -e "${YELLOW}ℹ️ Node is using port 9091 for Prometheus metrics${NC}"
@@ -414,48 +558,53 @@ EOF"
 update_node() {
     echo -e "\n${BOLD}${BLUE}🔄 Updating T3rn Executor Node...${NC}\n"
 
-    echo -e "${WHITE}[${CYAN}1/6${WHITE}] ${GREEN}➜ ${WHITE}⚒️ Installing dependencies...${NC}"
+    echo -e "${WHITE}[${CYAN}1/7${WHITE}] ${GREEN}➜ ${WHITE}🔄 Checking current mode...${NC}"
+    # Determine if node is using API or RPC mode
+    if [ -f ~/t3rn/executor.env ]; then
+        current_mode=$(grep "EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API" ~/t3rn/executor.env | cut -d= -f2)
+        if [ "$current_mode" = "true" ]; then
+            INSTALLATION_MODE="api"
+            EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API="true"
+            info_message "Current mode: API processing"
+        else
+            INSTALLATION_MODE="rpc"
+            EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API="false"
+            info_message "Current mode: RPC processing"
+        fi
+    else
+        echo -e "${YELLOW}Do you want to use API mode for processing orders? (y/n)${NC}"
+        read -p "➜ " api_choice
+        
+        if [[ "$api_choice" =~ ^[Yy]$ ]]; then
+            INSTALLATION_MODE="api"
+            EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API="true"
+        else
+            INSTALLATION_MODE="rpc"
+            EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API="false"
+        fi
+    fi
+
+    echo -e "${WHITE}[${CYAN}2/7${WHITE}] ${GREEN}➜ ${WHITE}⚒️ Installing dependencies...${NC}"
     install_dependencies
 
-    echo -e "${WHITE}[${CYAN}2/6${WHITE}] ${GREEN}➜ ${WHITE}♻️ Removing old files...${NC}"
+    echo -e "${WHITE}[${CYAN}3/7${WHITE}] ${GREEN}➜ ${WHITE}♻️ Backing up configuration...${NC}"
     # Backup the environment file
     if [ -f ~/t3rn/executor.env ]; then
         cp ~/t3rn/executor.env ~/t3rn/executor.env.backup
         success_message "Environment file backed up"
+        
+        # Extract private key from backup
+        PRIVATE_KEY_LOCAL=$(grep "PRIVATE_KEY_LOCAL" ~/t3rn/executor.env.backup | cut -d= -f2)
     fi
     
     # Remove old files
+    echo -e "${WHITE}[${CYAN}4/7${WHITE}] ${GREEN}➜ ${WHITE}♻️ Removing old files...${NC}"
     rm -rf ~/t3rn/executor
     rm -rf ~/t3rn/executor-linux-*.tar.gz
     success_message "Old files removed"
 
-    echo -e "${WHITE}[${CYAN}3/6${WHITE}] ${GREEN}➜ ${WHITE}📥 Downloading and setting up the node...${NC}"
+    echo -e "${WHITE}[${CYAN}5/7${WHITE}] ${GREEN}➜ ${WHITE}📥 Downloading and setting up the node...${NC}"
     cd ~/t3rn
-    
-    # Define current user name and home directory
-    USERNAME=$(whoami)
-    HOME_DIR=$(eval echo ~$USERNAME)
-    
-    # Set environment variables if not backed up
-    if [ ! -f ~/t3rn/executor.env.backup ]; then
-        ENVIRONMENT="testnet"
-        LOG_LEVEL="debug"
-        LOG_PRETTY="false"
-        EXECUTOR_PROCESS_BIDS_ENABLED="true"
-        EXECUTOR_PROCESS_ORDERS_ENABLED="true"
-        EXECUTOR_PROCESS_CLAIMS_ENABLED="true"
-        ENABLED_NETWORKS="blast-sepolia,unichain-sepolia,arbitrum-sepolia,base-sepolia,optimism-sepolia,l2rn"
-        
-        # Default RPC endpoints
-        RPC_ENDPOINTS='{
-            "l2rn": ["https://b2n.rpc.caldera.xyz/http"],
-            "arbt": ["https://arbitrum-sepolia.drpc.org", "https://sepolia-rollup.arbitrum.io/rpc"],
-            "bast": ["https://base-sepolia-rpc.publicnode.com", "https://base-sepolia.drpc.org"],
-            "opst": ["https://sepolia.optimism.io", "https://optimism-sepolia.drpc.org"],
-            "unit": ["https://unichain-sepolia.drpc.org", "https://sepolia.unichain.org"],
-            "blst": ["https://sepolia.blast.io", "https://endpoints.omniatech.io/v1/blast/sepolia/public"]
-        }'
-    fi
     
     # Download latest release
     info_message "Downloading the latest T3rn executor release..."
@@ -466,18 +615,106 @@ update_node() {
     info_message "Extracting files..."
     tar -xzf executor-linux-*.tar.gz
     
-    echo -e "${WHITE}[${CYAN}4/6${WHITE}] ${GREEN}➜ ${WHITE}🔑 Setting up private key...${NC}"
-    set_private_key
+    echo -e "${WHITE}[${CYAN}6/7${WHITE}] ${GREEN}➜ ${WHITE}⚙️ Restoring configuration...${NC}"
+    # If we had an existing configuration, restore relevant settings
+    if [ -f ~/t3rn/executor.env.backup ]; then
+        info_message "Restoring settings from previous configuration"
+        
+        # If private key wasn't extracted, ask for it again
+        if [ -z "$PRIVATE_KEY_LOCAL" ]; then
+            echo -e "${WHITE}[${CYAN}6.1/7${WHITE}] ${GREEN}➜ ${WHITE}🔑 Setting up private key...${NC}"
+            set_private_key
+        else
+            success_message "Private key restored from backup"
+        fi
+        
+        # Restore max gas price if it exists
+        if grep -q "EXECUTOR_MAX_L3_GAS_PRICE" ~/t3rn/executor.env.backup; then
+            max_gas_price=$(grep "EXECUTOR_MAX_L3_GAS_PRICE" ~/t3rn/executor.env.backup | cut -d= -f2)
+            success_message "Gas price settings restored from backup"
+        else
+            max_gas_price="1000"  # Default value
+        fi
+        
+        # Restore prometheus port if it exists
+        if grep -q "PROMETHEUS_PORT" ~/t3rn/executor.env.backup; then
+            prometheus_port=$(grep "PROMETHEUS_PORT" ~/t3rn/executor.env.backup | cut -d= -f2)
+            success_message "Prometheus port settings restored from backup"
+        else
+            prometheus_port="9091"  # Default value
+        fi
+        
+        # Restore networks if they exist
+        if grep -q "ENABLED_NETWORKS" ~/t3rn/executor.env.backup; then
+            ENABLED_NETWORKS=$(grep "ENABLED_NETWORKS" ~/t3rn/executor.env.backup | cut -d= -f2)
+            success_message "Network settings restored from backup"
+        else
+            ENABLED_NETWORKS="blast-sepolia,unichain-sepolia,arbitrum-sepolia,base-sepolia,optimism-sepolia,l2rn"
+        fi
+        
+        # Restore RPC endpoints if RPC mode is selected and they exist in backup
+        if [ "$INSTALLATION_MODE" = "rpc" ] && grep -q "RPC_ENDPOINTS" ~/t3rn/executor.env.backup; then
+            RPC_ENDPOINTS=$(grep "RPC_ENDPOINTS" ~/t3rn/executor.env.backup | sed "s/RPC_ENDPOINTS='//" | sed "s/'$//")
+            success_message "RPC endpoints restored from backup"
+        fi
+    else
+        # If no backup, we need to set the private key
+        if [ -z "$PRIVATE_KEY_LOCAL" ]; then
+            echo -e "${WHITE}[${CYAN}6.1/7${WHITE}] ${GREEN}➜ ${WHITE}🔑 Setting up private key...${NC}"
+            set_private_key
+        fi
+        
+        # Set default values
+        max_gas_price="1000"
+        prometheus_port="9091"
+        ENABLED_NETWORKS="blast-sepolia,unichain-sepolia,arbitrum-sepolia,base-sepolia,optimism-sepolia,l2rn"
+        
+        # Default RPC endpoints if in RPC mode
+        if [ "$INSTALLATION_MODE" = "rpc" ]; then
+            RPC_ENDPOINTS='{
+                "l2rn": ["https://b2n.rpc.caldera.xyz/http"],
+                "arbt": ["https://arbitrum-sepolia.drpc.org", "https://sepolia-rollup.arbitrum.io/rpc"],
+                "bast": ["https://base-sepolia-rpc.publicnode.com", "https://base-sepolia.drpc.org"],
+                "opst": ["https://sepolia.optimism.io", "https://optimism-sepolia.drpc.org"],
+                "unit": ["https://unichain-sepolia.drpc.org", "https://sepolia.unichain.org"],
+                "blst": ["https://sepolia.blast.io", "https://endpoints.omniatech.io/v1/blast/sepolia/public"]
+            }'
+        fi
+    fi
     
-    setup_rpc_endpoints
-    
-    echo -e "${WHITE}[${CYAN}5/6${WHITE}] ${GREEN}➜ ${WHITE}⛽ Setting up gas settings...${NC}"
-    set_gas_settings
+    # Create the environment file
+    echo -e "${WHITE}[${CYAN}7/7${WHITE}] ${GREEN}➜ ${WHITE}⚙️ Creating updated environment file...${NC}"
+    cat > ~/t3rn/executor.env << EOF
+ENVIRONMENT=testnet
+LOG_LEVEL=debug
+LOG_PRETTY=false
+EXECUTOR_PROCESS_BIDS_ENABLED=true
+EXECUTOR_PROCESS_ORDERS_ENABLED=true
+EXECUTOR_PROCESS_CLAIMS_ENABLED=true
+PRIVATE_KEY_LOCAL=${PRIVATE_KEY_LOCAL}
+ENABLED_NETWORKS=${ENABLED_NETWORKS}
+EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API=${EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API}
+EOF
 
-    # Create systemd service
-    echo -e "${WHITE}[${CYAN}6/6${WHITE}] ${GREEN}➜ ${WHITE}▶️ Creating and starting systemd service...${NC}"
+    # Add RPC endpoints only if RPC mode is selected
+    if [ "$INSTALLATION_MODE" = "rpc" ]; then
+        echo "RPC_ENDPOINTS='${RPC_ENDPOINTS}'" >> ~/t3rn/executor.env
+    fi
     
-    # Create service file
+    # Add gas settings
+    echo "PROMETHEUS_PORT=${prometheus_port}" >> ~/t3rn/executor.env
+    echo "EXECUTOR_MAX_L3_GAS_PRICE=${max_gas_price}" >> ~/t3rn/executor.env
+    
+    success_message "Environment file updated at ~/t3rn/executor.env"
+    
+    # Create systemd service
+    echo -e "${WHITE}[${CYAN}7/7${WHITE}] ${GREEN}➜ ${WHITE}▶️ Restarting systemd service...${NC}"
+    
+    # Define current user name and home directory
+    USERNAME=$(whoami)
+    HOME_DIR=$(eval echo ~$USERNAME)
+    
+    # Update service file with new path to the updated binary
     sudo bash -c "cat > /etc/systemd/system/t3rn-executor.service << EOF
 [Unit]
 Description=T3rn Executor Node
@@ -496,10 +733,9 @@ LimitNOFILE=65535
 WantedBy=multi-user.target
 EOF"
 
-    # Enable and start service
+    # Reload and restart service
     sudo systemctl daemon-reload
-    sudo systemctl enable t3rn-executor
-    sudo systemctl start t3rn-executor
+    sudo systemctl restart t3rn-executor
     
     # Check if service started successfully
     if sudo systemctl is-active --quiet t3rn-executor; then
@@ -510,11 +746,16 @@ EOF"
     
     echo -e "\n${PURPLE}═════════════════════════════════════════════════════════════════════${NC}"
     echo -e "${GREEN}✓ T3rn Executor Node successfully updated and started!${NC}"
+    if [ "$INSTALLATION_MODE" = "api" ]; then
+        echo -e "${YELLOW}ℹ️ Node is configured to process orders via API for higher reliability${NC}"
+    else
+        echo -e "${YELLOW}ℹ️ Node is configured to process orders via RPC${NC}"
+    fi
     echo -e "${YELLOW}ℹ️ To check node logs, run:${NC} ${CYAN}sudo journalctl -u t3rn-executor -f --no-hostname${NC}"
-    if grep -q "PROMETHEUS_PORT=9091" ~/t3rn/executor.env; then
+    if [ "$prometheus_port" = "9091" ]; then
         echo -e "${YELLOW}ℹ️ Node is using port 9091 for Prometheus metrics${NC}"
     else
-        echo -e "${YELLOW}ℹ️ Node is using default Prometheus port. If you have port conflicts, run option 3 to change it.${NC}"
+        echo -e "${YELLOW}ℹ️ Node is using custom Prometheus port: ${prometheus_port}${NC}"
     fi
     echo -e "${PURPLE}═════════════════════════════════════════════════════════════════════${NC}\n"
 }
@@ -550,7 +791,7 @@ remove_node() {
 while true; do
     display_logo
     print_menu
-    echo -e "${BOLD}${BLUE}📝 Enter action number [1-9]:${NC} "
+    echo -e "${BOLD}${BLUE}📝 Enter action number [1-10]:${NC} "
     read -p "➜ " choice
 
     case $choice in
@@ -590,20 +831,24 @@ while true; do
             set_private_key
             ;;
         7)
-            check_logs
+            toggle_api_rpc_mode
             ;;
         8)
-            remove_node
+            check_logs
             ;;
         9)
+            remove_node
+            ;;
+        10)
             echo -e "\n${GREEN}👋 Goodbye!${NC}\n"
             exit 0
             ;;
         *)
-            error_message "Invalid choice! Please enter a number from 1 to 9."
+            error_message "Invalid choice! Please enter a number from 1 to 10."
             ;;
     esac
     
     echo -e "\nPress Enter to return to menu..."
     read
 done
+
