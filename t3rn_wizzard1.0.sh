@@ -298,11 +298,28 @@ setup_rpc_endpoints() {
         ["Optimism Sepolia"]="opst"
     )
     
+    # Initialize default RPC endpoints JSON
+    if [ -z "$RPC_ENDPOINTS" ]; then
+        RPC_ENDPOINTS='{
+            "l2rn": ["https://b2n.rpc.caldera.xyz/http"],
+            "arbt": ["https://arbitrum-sepolia.drpc.org", "https://sepolia-rollup.arbitrum.io/rpc"],
+            "bast": ["https://base-sepolia-rpc.publicnode.com", "https://base-sepolia.drpc.org"],
+            "opst": ["https://sepolia.optimism.io", "https://optimism-sepolia.drpc.org"],
+            "unit": ["https://unichain-sepolia.drpc.org", "https://sepolia.unichain.org"],
+            "blst": ["https://sepolia.blast.io", "https://endpoints.omniatech.io/v1/blast/sepolia/public"]
+        }'
+    fi
+    
     # Extract current RPC endpoints if env file exists
-    if [ -f ~/t3rn/executor.env ]; then
-        current_rpc=$(grep "RPC_ENDPOINTS" ~/t3rn/executor.env | sed "s/RPC_ENDPOINTS='//" | sed "s/'$//")
-        if [ -n "$current_rpc" ]; then
-            RPC_ENDPOINTS="$current_rpc"
+    if [ -f ~/t3rn/executor.env ] && grep -q "RPC_ENDPOINTS" ~/t3rn/executor.env; then
+        rpc_line=$(grep "RPC_ENDPOINTS" ~/t3rn/executor.env)
+        # Use proper JSON extraction
+        rpc_json=$(echo "$rpc_line" | sed -E "s/RPC_ENDPOINTS='(.*)'/\1/")
+        if echo "$rpc_json" | jq empty &>/dev/null; then
+            RPC_ENDPOINTS="$rpc_json"
+            info_message "Successfully loaded existing RPC configuration"
+        else
+            warning_message "Could not parse existing RPC configuration, using defaults"
         fi
     fi
     
@@ -313,13 +330,23 @@ setup_rpc_endpoints() {
         read -p "➜ " new_rpc
         
         if [ -n "$new_rpc" ]; then
-            # Add the new RPC to the array if it doesn't already exist
-            if [[ ! "$RPC_ENDPOINTS" =~ "$new_rpc" ]]; then
-                RPC_ENDPOINTS=$(echo "$RPC_ENDPOINTS" | jq ".$code += [\"$new_rpc\"]")
-                success_message "Added RPC endpoint for ${network}"
+            # Add the new RPC to the array using temporary file to avoid quoting issues
+            echo "$RPC_ENDPOINTS" > /tmp/rpc_temp.json
+            if jq -e ".$code" /tmp/rpc_temp.json &>/dev/null; then
+                # Network exists in JSON
+                if ! jq -e ".$code | index(\"$new_rpc\")" /tmp/rpc_temp.json &>/dev/null; then
+                    # RPC doesn't exist, add it
+                    RPC_ENDPOINTS=$(jq ".$code += [\"$new_rpc\"]" /tmp/rpc_temp.json)
+                    success_message "Added RPC endpoint for ${network}"
+                else
+                    info_message "This RPC endpoint is already in the list"
+                fi
             else
-                info_message "This RPC endpoint is already in the list"
+                # Network doesn't exist, create it
+                RPC_ENDPOINTS=$(jq ".$code = [\"$new_rpc\"]" /tmp/rpc_temp.json)
+                success_message "Added RPC endpoint for ${network}"
             fi
+            rm /tmp/rpc_temp.json
         else
             info_message "Using default RPC endpoints for ${network}"
         fi
@@ -327,11 +354,27 @@ setup_rpc_endpoints() {
     
     # If the node is already installed, update the env file directly
     if [ -f ~/t3rn/executor.env ]; then
-        sed -i "s|RPC_ENDPOINTS='.*'|RPC_ENDPOINTS='$RPC_ENDPOINTS'|" ~/t3rn/executor.env
-        success_message "RPC endpoints updated"
-        
-        # Restart service to apply changes
-        restart_service
+        # Create temporary file to store properly formatted JSON
+        echo "$RPC_ENDPOINTS" > /tmp/rpc_formatted.json
+        # Make sure the JSON is valid
+        if jq empty /tmp/rpc_formatted.json &>/dev/null; then
+            # Use awk to replace the line because sed struggles with complex JSON
+            awk -v rpc="$(cat /tmp/rpc_formatted.json)" '{
+                if (/^RPC_ENDPOINTS=/) {
+                    print "RPC_ENDPOINTS=\x27" rpc "\x27"
+                } else {
+                    print $0
+                }
+            }' ~/t3rn/executor.env > ~/t3rn/executor.env.new
+            mv ~/t3rn/executor.env.new ~/t3rn/executor.env
+            success_message "RPC endpoints updated"
+            
+            # Restart service to apply changes
+            restart_service
+        else
+            error_message "Invalid JSON format. RPC endpoints not updated."
+        fi
+        rm /tmp/rpc_formatted.json
     fi
 }
 
@@ -370,10 +413,17 @@ change_rpc() {
     echo -e "\n${BOLD}${BLUE}🔌 Changing RPC for ${network_name}...${NC}\n"
     
     # Extract current RPC endpoints
-    if [ -f ~/t3rn/executor.env ]; then
-        current_rpc=$(grep "RPC_ENDPOINTS" ~/t3rn/executor.env | sed "s/RPC_ENDPOINTS='//" | sed "s/'$//")
-    else
-        current_rpc="$RPC_ENDPOINTS"
+    local current_rpc='{}'
+    if [ -f ~/t3rn/executor.env ] && grep -q "RPC_ENDPOINTS" ~/t3rn/executor.env; then
+        rpc_line=$(grep "RPC_ENDPOINTS" ~/t3rn/executor.env)
+        # Use proper JSON extraction
+        rpc_json=$(echo "$rpc_line" | sed -E "s/RPC_ENDPOINTS='(.*)'/\1/")
+        if echo "$rpc_json" | jq empty &>/dev/null; then
+            current_rpc="$rpc_json"
+            info_message "Successfully loaded existing RPC configuration"
+        else
+            warning_message "Could not parse existing RPC configuration, using defaults"
+        fi
     fi
     
     # Get new RPC endpoint from user
@@ -386,27 +436,54 @@ change_rpc() {
         return
     fi
     
-    # Update RPC in JSON structure
-    # First, extract the array for the network
-    local network_array=$(echo "$current_rpc" | jq -r ".\"$network_code\"")
+    # Add the new RPC using temporary file to avoid quoting issues
+    echo "$current_rpc" > /tmp/rpc_temp.json
     
-    # Add the new RPC to the array if it doesn't already exist
-    if [[ ! "$network_array" =~ "$new_rpc" ]]; then
-        updated_rpc=$(echo "$current_rpc" | jq ".$network_code += [\"$new_rpc\"]")
-        
-        # Update the environment file
-        if [ -f ~/t3rn/executor.env ]; then
-            sed -i "s|RPC_ENDPOINTS='.*'|RPC_ENDPOINTS='$updated_rpc'|" ~/t3rn/executor.env
+    if jq -e ".$network_code" /tmp/rpc_temp.json &>/dev/null; then
+        # Network exists in JSON
+        if ! jq -e ".$network_code | index(\"$new_rpc\")" /tmp/rpc_temp.json &>/dev/null; then
+            # RPC doesn't exist, add it
+            updated_rpc=$(jq ".$network_code += [\"$new_rpc\"]" /tmp/rpc_temp.json)
+            success_message "Added RPC endpoint for ${network_name}"
+        else
+            info_message "This RPC endpoint is already in the list"
+            rm /tmp/rpc_temp.json
+            return
+        fi
+    else
+        # Network doesn't exist, create it
+        updated_rpc=$(jq ".$network_code = [\"$new_rpc\"]" /tmp/rpc_temp.json)
+        success_message "Added RPC endpoint for ${network_name}"
+    fi
+    
+    rm /tmp/rpc_temp.json
+    
+    # Update the environment file
+    if [ -f ~/t3rn/executor.env ]; then
+        # Create temporary file to store properly formatted JSON
+        echo "$updated_rpc" > /tmp/rpc_formatted.json
+        # Make sure the JSON is valid
+        if jq empty /tmp/rpc_formatted.json &>/dev/null; then
+            # Use awk to replace the line
+            awk -v rpc="$(cat /tmp/rpc_formatted.json)" '{
+                if (/^RPC_ENDPOINTS=/) {
+                    print "RPC_ENDPOINTS=\x27" rpc "\x27"
+                } else {
+                    print $0
+                }
+            }' ~/t3rn/executor.env > ~/t3rn/executor.env.new
+            mv ~/t3rn/executor.env.new ~/t3rn/executor.env
             success_message "RPC endpoint for ${network_name} updated"
             
             # Restart service to apply changes
             restart_service
         else
-            RPC_ENDPOINTS="$updated_rpc"
-            success_message "RPC endpoint for ${network_name} will be applied on next install"
+            error_message "Invalid JSON format. RPC endpoints not updated."
         fi
+        rm /tmp/rpc_formatted.json
     else
-        info_message "This RPC endpoint is already in the list"
+        RPC_ENDPOINTS="$updated_rpc"
+        success_message "RPC endpoint for ${network_name} will be applied on next install"
     fi
 }
 
@@ -431,12 +508,20 @@ clear_rpc_settings() {
         
         # Update environment file with default RPC
         if [ -f ~/t3rn/executor.env ]; then
-            sed -i "s|RPC_ENDPOINTS='.*'|RPC_ENDPOINTS='$default_rpc'|" ~/t3rn/executor.env
+            # Save default JSON to temp file
+            echo "$default_rpc" > /tmp/default_rpc.json
             
-            # If there's no RPC_ENDPOINTS entry, add it
-            if ! grep -q "RPC_ENDPOINTS" ~/t3rn/executor.env; then
-                echo "RPC_ENDPOINTS='$default_rpc'" >> ~/t3rn/executor.env
-            fi
+            # Use awk to replace the line
+            awk -v rpc="$(cat /tmp/default_rpc.json)" '{
+                if (/^RPC_ENDPOINTS=/) {
+                    print "RPC_ENDPOINTS=\x27" rpc "\x27"
+                } else {
+                    print $0
+                }
+            }' ~/t3rn/executor.env > ~/t3rn/executor.env.new
+            mv ~/t3rn/executor.env.new ~/t3rn/executor.env
+            
+            rm /tmp/default_rpc.json
             
             success_message "RPC endpoints reset to default values"
             
@@ -659,8 +744,12 @@ EOF
 
     # Add RPC endpoints only if RPC mode is selected
     if [ "$INSTALLATION_MODE" = "rpc" ]; then
-        echo "RPC_ENDPOINTS='${RPC_ENDPOINTS}'" >> ~/t3rn/executor.env
+        # Save RPC JSON to temp file for proper quoting
+        echo "$RPC_ENDPOINTS" > /tmp/install_rpc.json
+        echo "RPC_ENDPOINTS='$(cat /tmp/install_rpc.json)'" >> ~/t3rn/executor.env
+        rm /tmp/install_rpc.json
     fi
+
     
     # Add gas settings
     echo "PROMETHEUS_PORT=9091" >> ~/t3rn/executor.env
@@ -870,7 +959,10 @@ EOF
 
     # Add RPC endpoints only if RPC mode is selected
     if [ "$INSTALLATION_MODE" = "rpc" ]; then
-        echo "RPC_ENDPOINTS='${RPC_ENDPOINTS}'" >> ~/t3rn/executor.env
+        # Save RPC JSON to temp file for proper quoting
+        echo "$RPC_ENDPOINTS" > /tmp/update_rpc.json
+        echo "RPC_ENDPOINTS='$(cat /tmp/update_rpc.json)'" >> ~/t3rn/executor.env
+        rm /tmp/update_rpc.json
     fi
     
     # Add gas settings
