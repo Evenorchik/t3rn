@@ -542,15 +542,30 @@ display_current_settings() {
     # RPC Endpoints (only show if in RPC mode)
     if ! grep -q "EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API=true" ~/t3rn/executor.env; then
         if grep -q "RPC_ENDPOINTS" ~/t3rn/executor.env; then
-            rpc_value=$(grep "RPC_ENDPOINTS" ~/t3rn/executor.env | sed "s/RPC_ENDPOINTS='//" | sed "s/'$//")
-            echo -e "${WHITE}Arbitrum Sepolia:${NC} $(echo $rpc_value | jq -r '.arbt | join(", ")' 2>/dev/null || echo "${YELLOW}Not configured${NC}")"
-            echo -e "${WHITE}Base Sepolia:${NC} $(echo $rpc_value | jq -r '.bast | join(", ")' 2>/dev/null || echo "${YELLOW}Not configured${NC}")"
-            echo -e "${WHITE}Blast Sepolia:${NC} $(echo $rpc_value | jq -r '.blst | join(", ")' 2>/dev/null || echo "${YELLOW}Not configured${NC}")"
-            echo -e "${WHITE}Unichain Sepolia:${NC} $(echo $rpc_value | jq -r '.unit | join(", ")' 2>/dev/null || echo "${YELLOW}Not configured${NC}")"
-            echo -e "${WHITE}Optimism Sepolia:${NC} $(echo $rpc_value | jq -r '.opst | join(", ")' 2>/dev/null || echo "${YELLOW}Not configured${NC}")"
-            echo -e "${WHITE}Layer2rn:${NC} $(echo $rpc_value | jq -r '.l2rn | join(", ")' 2>/dev/null || echo "${YELLOW}Not configured${NC}")"
+            echo -e "${YELLOW}RPC Endpoints Configuration:${NC}"
+            # Извлекаем строку с RPC_ENDPOINTS, сохраняя кавычки и форматирование
+            rpc_line=$(grep "RPC_ENDPOINTS" ~/t3rn/executor.env)
+            
+            # Показываем весь JSON для отладки
+            echo -e "${CYAN}Raw RPC configuration:${NC}\n$rpc_line"
+                
+            # Пытаемся извлечь и обработать JSON
+            rpc_json=$(echo "$rpc_line" | sed -E "s/RPC_ENDPOINTS='(.*)'/\1/")
+        
+            # Проверяем валидность JSON с помощью jq
+            if echo "$rpc_json" | jq empty &>/dev/null; then
+                echo -e "${GREEN}Successfully parsed RPC configuration:${NC}"
+                echo -e "${WHITE}Arbitrum Sepolia:${NC} $(echo "$rpc_json" | jq -r '.arbt | join(", ")' 2>/dev/null || echo "${YELLOW}Not configured${NC}")"
+                echo -e "${WHITE}Base Sepolia:${NC} $(echo "$rpc_json" | jq -r '.bast | join(", ")' 2>/dev/null || echo "${YELLOW}Not configured${NC}")"
+                echo -e "${WHITE}Blast Sepolia:${NC} $(echo "$rpc_json" | jq -r '.blst | join(", ")' 2>/dev/null || echo "${YELLOW}Not configured${NC}")"
+                echo -e "${WHITE}Unichain Sepolia:${NC} $(echo "$rpc_json" | jq -r '.unit | join(", ")' 2>/dev/null || echo "${YELLOW}Not configured${NC}")"
+                echo -e "${WHITE}Optimism Sepolia:${NC} $(echo "$rpc_json" | jq -r '.opst | join(", ")' 2>/dev/null || echo "${YELLOW}Not configured${NC}")"
+                echo -e "${WHITE}Layer2rn:${NC} $(echo "$rpc_json" | jq -r '.l2rn | join(", ")' 2>/dev/null || echo "${YELLOW}Not configured${NC}")"
+            else
+                echo -e "${RED}Failed to parse RPC configuration as JSON. Raw content:${NC}\n$rpc_json"
+            fi
         else
-            echo -e "${YELLOW}No custom RPC endpoints configured. Using defaults.${NC}"
+            echo -e "${YELLOW}No custom RPC endpoints found in configuration file.${NC}"
         fi
     else
         echo -e "${YELLOW}Node is in API mode. RPC endpoints are not used.${NC}"
