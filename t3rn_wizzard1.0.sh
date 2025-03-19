@@ -653,7 +653,7 @@ display_current_settings() {
             echo -e "${YELLOW}No custom RPC endpoints found in configuration file.${NC}"
         fi
     else
-        echo -e "${YELLOW}Node is in API mode. RPC endpoints are not used.${NC}"
+        echo -e "${YELLOW}Node is in API mode. RPC endpoints are still configured but orders are processed via API:${NC}"
     fi
     
     echo -e "\n${BOLD}${BLUE}🚦 Service Status:${NC}"
@@ -742,13 +742,11 @@ ENABLED_NETWORKS=${ENABLED_NETWORKS}
 EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API=${EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API}
 EOF
 
-    # Add RPC endpoints only if RPC mode is selected
-    if [ "$INSTALLATION_MODE" = "rpc" ]; then
-        # Save RPC JSON to temp file for proper quoting
-        echo "$RPC_ENDPOINTS" > /tmp/install_rpc.json
-        echo "RPC_ENDPOINTS='$(cat /tmp/install_rpc.json)'" >> ~/t3rn/executor.env
-        rm /tmp/install_rpc.json
-    fi
+    # Add RPC endpoints in both modes, as they're needed for basic functionality
+    # Save RPC JSON to temp file for proper quoting
+    echo "$RPC_ENDPOINTS" > /tmp/install_rpc.json
+    echo "RPC_ENDPOINTS='$(cat /tmp/install_rpc.json)'" >> ~/t3rn/executor.env
+    rm /tmp/install_rpc.json
 
     
     # Add gas settings
@@ -957,13 +955,11 @@ ENABLED_NETWORKS=${ENABLED_NETWORKS}
 EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API=${EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API}
 EOF
 
-    # Add RPC endpoints only if RPC mode is selected
-    if [ "$INSTALLATION_MODE" = "rpc" ]; then
-        # Save RPC JSON to temp file for proper quoting
-        echo "$RPC_ENDPOINTS" > /tmp/update_rpc.json
-        echo "RPC_ENDPOINTS='$(cat /tmp/update_rpc.json)'" >> ~/t3rn/executor.env
-        rm /tmp/update_rpc.json
-    fi
+    # Add RPC endpoints in both modes, as they're needed for basic functionality
+    # Save RPC JSON to temp file for proper quoting
+    echo "$RPC_ENDPOINTS" > /tmp/update_rpc.json
+    echo "RPC_ENDPOINTS='$(cat /tmp/update_rpc.json)'" >> ~/t3rn/executor.env
+    rm /tmp/update_rpc.json
     
     # Add gas settings
     echo "PROMETHEUS_PORT=${prometheus_port}" >> ~/t3rn/executor.env
