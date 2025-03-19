@@ -87,8 +87,9 @@ print_menu() {
     echo -e "${WHITE}[${CYAN}6${WHITE}] ${GREEN}➜ ${WHITE}🔑  Change Private Key${NC}"
     echo -e "${WHITE}[${CYAN}7${WHITE}] ${GREEN}➜ ${WHITE}🔄  Toggle API/RPC Mode${NC}"
     echo -e "${WHITE}[${CYAN}8${WHITE}] ${GREEN}➜ ${WHITE}📊  Check Logs${NC}"
-    echo -e "${WHITE}[${CYAN}9${WHITE}] ${GREEN}➜ ${WHITE}♻️  Remove Node${NC}"
-    echo -e "${WHITE}[${CYAN}10${WHITE}] ${GREEN}➜ ${WHITE}🚶  Exit${NC}\n"
+    echo -e "${WHITE}[${CYAN}9${WHITE}] ${GREEN}➜ ${WHITE}🔍  Display Current Settings${NC}"
+    echo -e "${WHITE}[${CYAN}10${WHITE}] ${GREEN}➜ ${WHITE}♻️  Remove Node${NC}"
+    echo -e "${WHITE}[${CYAN}11${WHITE}] ${GREEN}➜ ${WHITE}🚶  Exit${NC}\n"
 }
 
 # Function for RPC submenu
@@ -454,6 +455,120 @@ clear_rpc_settings() {
 check_logs() {
     echo -e "\n${BOLD}${BLUE}📊 Checking T3rn Executor Node logs...${NC}\n"
     sudo journalctl -u t3rn-executor -f --no-hostname
+}
+
+# Function to display current settings
+display_current_settings() {
+    echo -e "\n${BOLD}${WHITE}╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮${NC}"
+    echo -e "${BOLD}${WHITE}│        🔍 Current Node Settings         │${NC}"
+    echo -e "${BOLD}${WHITE}╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯${NC}\n"
+    
+    if [ ! -f ~/t3rn/executor.env ]; then
+        error_message "Node is not installed yet. No settings available."
+        return
+    fi
+    
+    # Read from environment file
+    echo -e "${BOLD}${BLUE}📋 General Settings:${NC}"
+    echo -e "${CYAN}───────────────────────────────────────────────${NC}"
+    
+    # Processing mode
+    if grep -q "EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API=true" ~/t3rn/executor.env; then
+        echo -e "${WHITE}Processing Mode:${NC} ${GREEN}API Mode${NC} (Recommended for higher reliability)"
+    else
+        echo -e "${WHITE}Processing Mode:${NC} ${YELLOW}RPC Mode${NC} (Using custom RPC endpoints)"
+    fi
+    
+    # Environment
+    if grep -q "ENVIRONMENT" ~/t3rn/executor.env; then
+        env_value=$(grep "ENVIRONMENT" ~/t3rn/executor.env | cut -d= -f2)
+        echo -e "${WHITE}Environment:${NC} ${GREEN}$env_value${NC}"
+    fi
+    
+    # Logging
+    if grep -q "LOG_LEVEL" ~/t3rn/executor.env; then
+        log_level=$(grep "LOG_LEVEL" ~/t3rn/executor.env | cut -d= -f2)
+        echo -e "${WHITE}Log Level:${NC} ${GREEN}$log_level${NC}"
+    fi
+    
+    # Enabled Networks
+    if grep -q "ENABLED_NETWORKS" ~/t3rn/executor.env; then
+        networks=$(grep "ENABLED_NETWORKS" ~/t3rn/executor.env | cut -d= -f2)
+        echo -e "${WHITE}Enabled Networks:${NC} ${GREEN}$networks${NC}"
+    fi
+    
+    echo -e "\n${BOLD}${BLUE}⛽ Gas Settings:${NC}"
+    echo -e "${CYAN}───────────────────────────────────────────────${NC}"
+    
+    # Max Gas Price
+    if grep -q "EXECUTOR_MAX_L3_GAS_PRICE" ~/t3rn/executor.env; then
+        gas_price=$(grep "EXECUTOR_MAX_L3_GAS_PRICE" ~/t3rn/executor.env | cut -d= -f2)
+        echo -e "${WHITE}Max L3 Gas Price:${NC} ${GREEN}$gas_price${NC} GWEI"
+    else
+        echo -e "${WHITE}Max L3 Gas Price:${NC} ${YELLOW}Not Set${NC} (Will use default)"
+    fi
+    
+    # Prometheus Port
+    if grep -q "PROMETHEUS_PORT" ~/t3rn/executor.env; then
+        prom_port=$(grep "PROMETHEUS_PORT" ~/t3rn/executor.env | cut -d= -f2)
+        echo -e "${WHITE}Prometheus Port:${NC} ${GREEN}$prom_port${NC}"
+    fi
+    
+    echo -e "\n${BOLD}${BLUE}🔄 Process Settings:${NC}"
+    echo -e "${CYAN}───────────────────────────────────────────────${NC}"
+    
+    # Processing settings
+    if grep -q "EXECUTOR_PROCESS_BIDS_ENABLED=true" ~/t3rn/executor.env; then
+        echo -e "${WHITE}Process Bids:${NC} ${GREEN}Enabled${NC}"
+    else
+        echo -e "${WHITE}Process Bids:${NC} ${RED}Disabled${NC}"
+    fi
+    
+    if grep -q "EXECUTOR_PROCESS_ORDERS_ENABLED=true" ~/t3rn/executor.env; then
+        echo -e "${WHITE}Process Orders:${NC} ${GREEN}Enabled${NC}"
+    else
+        echo -e "${WHITE}Process Orders:${NC} ${RED}Disabled${NC}"
+    fi
+    
+    if grep -q "EXECUTOR_PROCESS_CLAIMS_ENABLED=true" ~/t3rn/executor.env; then
+        echo -e "${WHITE}Process Claims:${NC} ${GREEN}Enabled${NC}"
+    else
+        echo -e "${WHITE}Process Claims:${NC} ${RED}Disabled${NC}"
+    fi
+    
+    echo -e "\n${BOLD}${BLUE}🔌 RPC Endpoints:${NC}"
+    echo -e "${CYAN}───────────────────────────────────────────────${NC}"
+    
+    # RPC Endpoints (only show if in RPC mode)
+    if ! grep -q "EXECUTOR_PROCESS_PENDING_ORDERS_FROM_API=true" ~/t3rn/executor.env; then
+        if grep -q "RPC_ENDPOINTS" ~/t3rn/executor.env; then
+            rpc_value=$(grep "RPC_ENDPOINTS" ~/t3rn/executor.env | sed "s/RPC_ENDPOINTS='//" | sed "s/'$//")
+            echo -e "${WHITE}Arbitrum Sepolia:${NC} $(echo $rpc_value | jq -r '.arbt | join(", ")' 2>/dev/null || echo "${YELLOW}Not configured${NC}")"
+            echo -e "${WHITE}Base Sepolia:${NC} $(echo $rpc_value | jq -r '.bast | join(", ")' 2>/dev/null || echo "${YELLOW}Not configured${NC}")"
+            echo -e "${WHITE}Blast Sepolia:${NC} $(echo $rpc_value | jq -r '.blst | join(", ")' 2>/dev/null || echo "${YELLOW}Not configured${NC}")"
+            echo -e "${WHITE}Unichain Sepolia:${NC} $(echo $rpc_value | jq -r '.unit | join(", ")' 2>/dev/null || echo "${YELLOW}Not configured${NC}")"
+            echo -e "${WHITE}Optimism Sepolia:${NC} $(echo $rpc_value | jq -r '.opst | join(", ")' 2>/dev/null || echo "${YELLOW}Not configured${NC}")"
+            echo -e "${WHITE}Layer2rn:${NC} $(echo $rpc_value | jq -r '.l2rn | join(", ")' 2>/dev/null || echo "${YELLOW}Not configured${NC}")"
+        else
+            echo -e "${YELLOW}No custom RPC endpoints configured. Using defaults.${NC}"
+        fi
+    else
+        echo -e "${YELLOW}Node is in API mode. RPC endpoints are not used.${NC}"
+    fi
+    
+    echo -e "\n${BOLD}${BLUE}🚦 Service Status:${NC}"
+    echo -e "${CYAN}───────────────────────────────────────────────${NC}"
+    if sudo systemctl is-active --quiet t3rn-executor; then
+        echo -e "${WHITE}Service Status:${NC} ${GREEN}Active${NC}"
+        uptime=$(sudo systemctl show t3rn-executor --property=ActiveEnterTimestamp | cut -d= -f2)
+        echo -e "${WHITE}Running Since:${NC} ${GREEN}$uptime${NC}"
+    else
+        echo -e "${WHITE}Service Status:${NC} ${RED}Inactive${NC}"
+    fi
+    
+    echo -e "\n${PURPLE}═════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${YELLOW}ℹ️ To view detailed logs use:${NC} ${CYAN}sudo journalctl -u t3rn-executor -f --no-hostname${NC}"
+    echo -e "${PURPLE}═════════════════════════════════════════════════════════════════════${NC}\n"
 }
 
 # Function for installing the node
@@ -837,67 +952,70 @@ while true; do
     read -p "➜ " choice
 
     case $choice in
-        1)
-            install_node
-            ;;
-        2)
-            update_node
-            ;;
-        3)
-            set_gas_settings
-            ;;
-        4)
-            while true; do
-                display_logo
-                print_rpc_submenu
-                echo -e "${BOLD}${BLUE}📝 Enter selection [1-7]:${NC} "
-                read -p "➜ " rpc_choice
-                
-                case $rpc_choice in
-                    1|2|3|4|5)
-                        change_rpc "$rpc_choice"
-                        echo -e "\nPress Enter to return to RPC menu..."
-                        read
-                        ;;
-                    6)
-                        clear_rpc_settings
-                        echo -e "\nPress Enter to return to RPC menu..."
-                        read
-                        ;;
-                    7)
-                        break
-                        ;;
-                    *)
-                        error_message "Invalid choice! Please enter a number from 1 to 7."
-                        echo -e "\nPress Enter to continue..."
-                        read
-                        ;;
-                esac
-            done
-            ;;
-        5)
-            change_gas_settings
-            ;;
-        6)
-            set_private_key
-            ;;
-        7)
-            toggle_api_rpc_mode
-            ;;
-        8)
-            check_logs
-            ;;
-        9)
-            remove_node
-            ;;
-        10)
-            echo -e "\n${GREEN}👋 Goodbye!${NC}\n"
-            exit 0
-            ;;
-        *)
-            error_message "Invalid choice! Please enter a number from 1 to 10."
-            ;;
-    esac
+    1)
+        install_node
+        ;;
+    2)
+        update_node
+        ;;
+    3)
+        set_gas_settings
+        ;;
+    4)
+        while true; do
+            display_logo
+            print_rpc_submenu
+            echo -e "${BOLD}${BLUE}📝 Enter selection [1-7]:${NC} "
+            read -p "➜ " rpc_choice
+            
+            case $rpc_choice in
+                1|2|3|4|5)
+                    change_rpc "$rpc_choice"
+                    echo -e "\nPress Enter to return to RPC menu..."
+                    read
+                    ;;
+                6)
+                    clear_rpc_settings
+                    echo -e "\nPress Enter to return to RPC menu..."
+                    read
+                    ;;
+                7)
+                    break
+                    ;;
+                *)
+                    error_message "Invalid choice! Please enter a number from 1 to 7."
+                    echo -e "\nPress Enter to continue..."
+                    read
+                    ;;
+            esac
+        done
+        ;;
+    5)
+        change_gas_settings
+        ;;
+    6)
+        set_private_key
+        ;;
+    7)
+        toggle_api_rpc_mode
+        ;;
+    8)
+        check_logs
+        ;;
+    9)
+        display_current_settings
+        ;;
+    10)
+        remove_node
+        ;;
+    11)
+        echo -e "\n${GREEN}👋 Goodbye!${NC}\n"
+        exit 0
+        ;;
+    *)
+        error_message "Invalid choice! Please enter a number from 1 to 11."
+        ;;
+esac
     
     echo -e "\nPress Enter to return to menu..."
     read
