@@ -103,7 +103,8 @@ print_rpc_submenu() {
     echo -e "${WHITE}[${CYAN}3${WHITE}] ${GREEN}➜ ${WHITE}🟠  Blast Sepolia${NC}"
     echo -e "${WHITE}[${CYAN}4${WHITE}] ${GREEN}➜ ${WHITE}🟣  Unichain Sepolia${NC}"
     echo -e "${WHITE}[${CYAN}5${WHITE}] ${GREEN}➜ ${WHITE}🔴  Optimism Sepolia${NC}"
-    echo -e "${WHITE}[${CYAN}6${WHITE}] ${GREEN}➜ ${WHITE}⬅️  Back to Main Menu${NC}\n"
+    echo -e "${WHITE}[${CYAN}6${WHITE}] ${GREEN}➜ ${WHITE}🧹  Clear RPC Settings${NC}"
+    echo -e "${WHITE}[${CYAN}7${WHITE}] ${GREEN}➜ ${WHITE}⬅️  Back to Main Menu${NC}\n"
 }
 
 # Function for choosing installation mode
@@ -405,6 +406,47 @@ change_rpc() {
         fi
     else
         info_message "This RPC endpoint is already in the list"
+    fi
+}
+
+# Function for clearing RPC settings
+clear_rpc_settings() {
+    echo -e "\n${BOLD}${BLUE}🧹 Clearing RPC endpoints settings...${NC}\n"
+    
+    echo -e "${YELLOW}⚠️ This will reset all RPC endpoints to default values.${NC}"
+    echo -e "${YELLOW}Are you sure you want to continue? (y/n)${NC}"
+    read -p "➜ " confirm
+    
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        # Default RPC endpoints from official documentation
+        default_rpc='{
+            "l2rn": ["https://b2n.rpc.caldera.xyz/http"],
+            "arbt": ["https://arbitrum-sepolia.drpc.org", "https://sepolia-rollup.arbitrum.io/rpc"],
+            "bast": ["https://base-sepolia-rpc.publicnode.com", "https://base-sepolia.drpc.org"],
+            "opst": ["https://sepolia.optimism.io", "https://optimism-sepolia.drpc.org"],
+            "unit": ["https://unichain-sepolia.drpc.org", "https://sepolia.unichain.org"],
+            "blst": ["https://sepolia.blast.io", "https://endpoints.omniatech.io/v1/blast/sepolia/public"]
+        }'
+        
+        # Update environment file with default RPC
+        if [ -f ~/t3rn/executor.env ]; then
+            sed -i "s|RPC_ENDPOINTS='.*'|RPC_ENDPOINTS='$default_rpc'|" ~/t3rn/executor.env
+            
+            # If there's no RPC_ENDPOINTS entry, add it
+            if ! grep -q "RPC_ENDPOINTS" ~/t3rn/executor.env; then
+                echo "RPC_ENDPOINTS='$default_rpc'" >> ~/t3rn/executor.env
+            fi
+            
+            success_message "RPC endpoints reset to default values"
+            
+            # Restart service to apply changes
+            restart_service
+        else
+            RPC_ENDPOINTS="$default_rpc"
+            success_message "Default RPC endpoints will be applied on next install"
+        fi
+    else
+        info_message "Operation canceled"
     fi
 }
 
@@ -808,20 +850,29 @@ while true; do
             while true; do
                 display_logo
                 print_rpc_submenu
-                echo -e "${BOLD}${BLUE}📝 Enter selection [1-6]:${NC} "
+                echo -e "${BOLD}${BLUE}📝 Enter selection [1-7]:${NC} "
                 read -p "➜ " rpc_choice
                 
-                if [ "$rpc_choice" -eq 6 ]; then
-                    break
-                elif [ "$rpc_choice" -ge 1 ] && [ "$rpc_choice" -le 5 ]; then
-                    change_rpc "$rpc_choice"
-                    echo -e "\nPress Enter to return to RPC menu..."
-                    read
-                else
-                    error_message "Invalid choice! Please enter a number from 1 to 6."
-                    echo -e "\nPress Enter to continue..."
-                    read
-                fi
+                case $rpc_choice in
+                    1|2|3|4|5)
+                        change_rpc "$rpc_choice"
+                        echo -e "\nPress Enter to return to RPC menu..."
+                        read
+                        ;;
+                    6)
+                        clear_rpc_settings
+                        echo -e "\nPress Enter to return to RPC menu..."
+                        read
+                        ;;
+                    7)
+                        break
+                        ;;
+                    *)
+                        error_message "Invalid choice! Please enter a number from 1 to 7."
+                        echo -e "\nPress Enter to continue..."
+                        read
+                        ;;
+                esac
             done
             ;;
         5)
