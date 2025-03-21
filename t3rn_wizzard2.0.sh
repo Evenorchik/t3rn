@@ -338,9 +338,8 @@ add_custom_rpc() {
     # If the custom RPC file doesn't exist, initialize it
     initialize_custom_rpc_file
     
-    # Define network codes and names
+    # Define network codes and names (exclude l2rn)
     local networks=(
-        "l2rn:L2RN Network"
         "arbt:Arbitrum Sepolia"
         "bast:Base Sepolia"
         "blst:Blast Sepolia"
@@ -357,9 +356,16 @@ add_custom_rpc() {
     current_rpc="${current_rpc%\}}"
     
     # Start building new RPC config
-    local new_rpc="{"
+    # Automatically add the default l2rn endpoint from DEFAULT_RPC_FILE
+    local l2rn_default=$(grep -o '"l2rn": *\[[^]]*\]' "$DEFAULT_RPC_FILE")
+    local new_rpc="{ $l2rn_default"
     
-    # Loop through networks to get custom RPC
+    # If no l2rn config found in default, add a hardcoded one
+    if [ -z "$l2rn_default" ]; then
+        new_rpc="{ \"l2rn\": [\"https://b2n.rpc.caldera.xyz/http\"]"
+    fi
+    
+    # Loop through networks to get custom RPC (excluding l2rn)
     for network in "${networks[@]}"; do
         local code="${network%%:*}"
         local name="${network#*:}"
@@ -369,10 +375,7 @@ add_custom_rpc() {
         
         if [ -n "$custom_rpc" ]; then
             # Add to the new RPC config
-            if [ "$new_rpc" != "{" ]; then
-                new_rpc="$new_rpc,"
-            fi
-            new_rpc="$new_rpc \"$code\": [\"$custom_rpc\"]"
+            new_rpc="$new_rpc, \"$code\": [\"$custom_rpc\"]"
         fi
     done
     
