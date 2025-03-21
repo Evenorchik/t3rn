@@ -62,6 +62,9 @@ SERVICE_FILE="/etc/systemd/system/t3rn.service"
 TIMER_SERVICE_FILE="/etc/systemd/system/t3rn-restart.service"
 TIMER_FILE="/etc/systemd/system/t3rn-restart.timer"
 
+# Debug print to verify ENV_FILE path
+echo "Debug: ENV_FILE path is $ENV_FILE"
+
 # Real function implementations below
 # These override the empty prototypes defined at the beginning of the script
 
