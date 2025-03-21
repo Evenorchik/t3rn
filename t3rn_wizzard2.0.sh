@@ -720,321 +720,71 @@ configure_restart() {
     esac
 }
 
-# Installation wizard function declaration (moved before select_version_menu)
-install_wizard() {
-    local version="$1"
-    
-    clear
-    # Display logo
-    curl -s https://raw.githubusercontent.com/Evenorchik/evenorlogo/refs/heads/main/evenorlogo.sh | bash
-    
-    echo -e "\n${BOLD}${WHITE}╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮${NC}"
-    echo -e "${BOLD}${WHITE}│     Installing T3RN Executor $version    │${NC}"
-    echo -e "${BOLD}${WHITE}╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯${NC}\n"
-    
-    echo -e "${WHITE}[${CYAN}1/7${WHITE}] ${GREEN}➜ ${WHITE}Installing dependencies...${NC}"
-    install_dependencies
-    
-    echo -e "${WHITE}[${CYAN}2/7${WHITE}] ${GREEN}➜ ${WHITE}Creating configuration directories...${NC}"
-    mkdir -p "$T3RN_CONFIG_DIR"
-    create_default_rpc_config
-    initialize_custom_rpc_file
-    
-    echo -e "${WHITE}[${CYAN}3/7${WHITE}] ${GREEN}➜ ${WHITE}Выберите режим работы ноды:${NC}"
-    echo -e "${WHITE}[${CYAN}1${WHITE}] ${GREEN}➜ ${WHITE}API Mode${NC}"
-    echo -e "${WHITE}[${CYAN}2${WHITE}] ${GREEN}➜ ${WHITE}RPC Mode${NC}"
-    read -p "➜ " mode_choice
-    
-    local mode="api"
-    if [ "$mode_choice" = "2" ]; then
-        mode="rpc"
-    fi
-    
-    if [ "$mode" = "api" ]; then
-        local private_key=""
-        local valid_key=false
-        
-        while [ "$valid_key" = false ]; do
-            echo -e "${WHITE}[${CYAN}4/7${WHITE}] ${GREEN}➜ ${WHITE}Теперь введите ваш приватный ключ (начинается с 0x):${NC}"
-            read -p "➜ " private_key_input
-            
-            # Remove 0x prefix if present
-            if [[ "$private_key_input" == 0x* ]]; then
-                private_key="${private_key_input#0x}"
-            else
-                private_key="$private_key_input"
-            fi
-            
-            # Validate private key
-            if [ ${#private_key} -ne 64 ]; then
-                error_message "Неверная длина приватного ключа. Должно быть 64 символа (без 0x). Попробуйте еще раз."
-            else
-                valid_key=true
-            fi
-        done
-    else
-        echo -e "${WHITE}[${CYAN}4/7${WHITE}] ${GREEN}➜ ${WHITE}Выберите конфигурацию RPC:${NC}"
-        echo -e "${WHITE}[${CYAN}1${WHITE}] ${GREEN}➜ ${WHITE}Использовать стандартные RPC-эндпоинты${NC}"
-        echo -e "${WHITE}[${CYAN}2${WHITE}] ${GREEN}➜ ${WHITE}Добавить собственные RPC-эндпоинты${NC}"
-        read -p "➜ " rpc_choice
-        
-        if [ "$rpc_choice" = "2" ]; then
-            add_custom_rpc
-        fi
-        
-        local private_key=""
-        local valid_key=false
-        
-        while [ "$valid_key" = false ]; do
-            echo -e "${WHITE}[${CYAN}4/7${WHITE}] ${GREEN}➜ ${WHITE}Теперь введите ваш приватный ключ (начинается с 0x):${NC}"
-            read -p "➜ " private_key_input
-            
-            # Remove 0x prefix if present
-            if [[ "$private_key_input" == 0x* ]]; then
-                private_key="${private_key_input#0x}"
-            else
-                private_key="$private_key_input"
-            fi
-            
-            # Validate private key
-            if [ ${#private_key} -ne 64 ]; then
-                error_message "Неверная длина приватного ключа. Должно быть 64 символа (без 0x). Попробуйте еще раз."
-            else
-                valid_key=true
-            fi
-        done
-    fi
-    
-    echo -e "${WHITE}[${CYAN}5/7${WHITE}] ${GREEN}➜ ${WHITE}Укажите максимальную цену газа в gwei [по умолчанию: 1000]:${NC}"
-    read -p "➜ " max_gas
-    
-    if [ -z "$max_gas" ]; then
-        max_gas=1000
-    fi
-    
-    echo -e "${WHITE}[${CYAN}6/7${WHITE}] ${GREEN}➜ ${WHITE}Укажите порт для метрик [по умолчанию: 9090]:${NC}"
-    read -p "➜ " metrics_port
-    
-    if [ -z "$metrics_port" ]; then
-        metrics_port=9090
-    fi
-    
-    # Update environment file
-    update_env_file "$mode" "$private_key" "$max_gas" "$metrics_port"
-    
-    echo -e "${WHITE}[${CYAN}7/7${WHITE}] ${GREEN}➜ ${WHITE}Installing T3RN Executor...${NC}"
-    
-    # Install the T3RN Executor
-    if install_t3rn "$version"; then
-        # Create systemd service
-        local executor_path="$T3RN_DIR/executor/executor/bin/executor"
-        create_systemd_service "$executor_path"
-        
-        # Start the service
-        start_t3rn
-        
-        echo -e "\n${PURPLE}═════════════════════════════════════════════${NC}"
-        echo -e "${GREEN}✓ T3RN Executor successfully installed!${NC}"
-        echo -e "${PURPLE}═════════════════════════════════════════════${NC}\n"
-    fi
-}
-
-# Function to select version menu
-select_version_menu() {
-    local action="$1"
-    local versions=$(fetch_versions)
-    
-    if [ $? -ne 0 ]; then
-        return 1
-    fi
-    
-    local i=1
-    local latest=true
-    local version_array=()
-    
-    echo -e "${YELLOW}Available versions:${NC}"
-    while read -r version; do
-        if [ $latest = true ]; then
-            echo -e "${WHITE}[${CYAN}$i${WHITE}] ${GREEN}➜ ${WHITE}$version ${YELLOW}(latest)${NC}"
-            latest=false
-        else
-            echo -e "${WHITE}[${CYAN}$i${WHITE}] ${GREEN}➜ ${WHITE}$version${NC}"
-        fi
-        version_array+=("$version")
-        i=$((i+1))
-    done <<< "$versions"
-    
-    echo -e "${WHITE}[${CYAN}$i${WHITE}] ${GREEN}➜ ${WHITE}Back to menu${NC}"
-    
-    read -p "➜ " choice
-    
-    if [ "$choice" -eq "$i" ]; then
-        return 0
-    elif [ "$choice" -ge 1 ] && [ "$choice" -lt "$i" ]; then
-        local selected_version="${version_array[$((choice-1))]}"
-        
-        if [ "$action" = "install" ]; then
-            install_wizard "$selected_version"
-        elif [ "$action" = "update" ]; then
-            # Install the selected version
-            if install_t3rn "$selected_version"; then
-                # Update the service file to point to the new binary
-                local executor_path="$T3RN_DIR/executor/executor/bin/executor"
-                create_systemd_service "$executor_path"
-                start_t3rn
-                success_message "T3RN Executor updated to version $selected_version"
-            fi
-        fi
-    else
-        error_message "Invalid choice"
-        return 1
-    fi
-}
-
-# Run the main function when the script is executed
-main
-
-# End of script() {
+# Function for Configuration Menu
+configuration_menu() {
     while true; do
         clear
         # Display logo
         curl -s https://raw.githubusercontent.com/Evenorchik/evenorlogo/refs/heads/main/evenorlogo.sh | bash
         
         echo -e "\n${BOLD}${WHITE}╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮${NC}"
-        echo -e "${BOLD}${WHITE}│     Welcome to T3RN Executor Wizard    │${NC}"
+        echo -e "${BOLD}${WHITE}│      T3RN Executor Configuration       │${NC}"
         echo -e "${BOLD}${WHITE}╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯${NC}\n"
         
-        echo -e "${BOLD}${BLUE}⚒️ Available actions:${NC}\n"
-        echo -e "${WHITE}[${CYAN}1${WHITE}] ${GREEN}➜ ${WHITE}⚙️  Install node${NC}"
-        echo -e "${WHITE}[${CYAN}2${WHITE}] ${GREEN}➜ ${WHITE}📈  Update node${NC}"
-        echo -e "${WHITE}[${CYAN}3${WHITE}] ${GREEN}➜ ${WHITE}🔧  Configure node${NC}"
-        echo -e "${WHITE}[${CYAN}4${WHITE}] ${GREEN}➜ ${WHITE}📊  View logs${NC}"
-        echo -e "${WHITE}[${CYAN}5${WHITE}] ${GREEN}➜ ${WHITE}📋  Show current config${NC}"
-        echo -e "${WHITE}[${CYAN}6${WHITE}] ${GREEN}➜ ${WHITE}♻️   Remove node${NC}"
-        echo -e "${WHITE}[${CYAN}7${WHITE}] ${GREEN}➜ ${WHITE}🚶  Exit${NC}\n"
+        echo -e "${BOLD}${BLUE}⚙️ Available options:${NC}\n"
+        echo -e "${WHITE}[${CYAN}1${WHITE}] ${GREEN}➜ ${WHITE}Change mode (API/RPC)${NC}"
+        echo -e "${WHITE}[${CYAN}2${WHITE}] ${GREEN}➜ ${WHITE}Add custom RPC endpoints${NC}"
+        echo -e "${WHITE}[${CYAN}3${WHITE}] ${GREEN}➜ ${WHITE}Reset RPC to defaults${NC}"
+        echo -e "${WHITE}[${CYAN}4${WHITE}] ${GREEN}➜ ${WHITE}Change gas settings${NC}"
+        echo -e "${WHITE}[${CYAN}5${WHITE}] ${GREEN}➜ ${WHITE}Change private key${NC}"
+        echo -e "${WHITE}[${CYAN}6${WHITE}] ${GREEN}➜ ${WHITE}Configure auto-restart${NC}"
+        echo -e "${WHITE}[${CYAN}7${WHITE}] ${GREEN}➜ ${WHITE}Restart service${NC}"
+        echo -e "${WHITE}[${CYAN}8${WHITE}] ${GREEN}➜ ${WHITE}Stop service${NC}"
+        echo -e "${WHITE}[${CYAN}9${WHITE}] ${GREEN}➜ ${WHITE}Start service${NC}"
+        echo -e "${WHITE}[${CYAN}10${WHITE}] ${GREEN}➜ ${WHITE}Back to main menu${NC}\n"
         
-        echo -e "${BOLD}${BLUE}📝 Enter action number [1-7]:${NC} "
-        read -p "➜ " choice
+        echo -e "${BOLD}${BLUE}📝 Enter option number [1-10]:${NC} "
+        read -p "➜ " option
         
-        case $choice in
+        case $option in
             1)
-                select_version_menu "install"
+                change_mode
                 ;;
             2)
-                update_t3rn
+                add_custom_rpc
                 ;;
             3)
-                if [ ! -f "$ENV_FILE" ]; then
-                    error_message "T3RN Executor is not installed. Please install it first."
-                else
-                    configuration_menu
-                fi
+                reset_rpc
                 ;;
             4)
-                if [ ! -f "$ENV_FILE" ]; then
-                    error_message "T3RN Executor is not installed. Please install it first."
-                else
-                    view_logs
-                fi
+                change_gas_settings
                 ;;
             5)
-                show_config
+                change_private_key
                 ;;
             6)
-                if [ ! -f "$ENV_FILE" ]; then
-                    error_message "T3RN Executor is not installed. Nothing to remove."
-                else
-                    remove_t3rn
-                fi
+                configure_restart
                 ;;
             7)
-                echo -e "\n${GREEN}👋 Goodbye!${NC}\n"
-                exit 0
+                restart_t3rn
+                ;;
+            8)
+                stop_t3rn
+                ;;
+            9)
+                start_t3rn
+                ;;
+            10)
+                return 0
                 ;;
             *)
-                error_message "Invalid choice! Please enter a number from 1 to 7."
+                error_message "Invalid option! Please enter a number from 1 to 10."
                 ;;
         esac
         
-        if [ "$choice" != "4" ]; then
-            echo -e "\nPress Enter to return to menu..."
+        if [ "$option" != "10" ]; then
+            echo -e "\nPress Enter to return to configuration menu..."
             read
         fi
     done
-}
-
-# Start the script
-main
-
-# Installation wizard
-install_wizard() {
-    local version="$1"
-    
-    clear
-    # Display logo
-    curl -s https://raw.githubusercontent.com/Evenorchik/evenorlogo/refs/heads/main/evenorlogo.sh | bash
-    
-    echo -e "\n${BOLD}${WHITE}╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮${NC}"
-    echo -e "${BOLD}${WHITE}│     Installing T3RN Executor $version    │${NC}"
-    echo -e "${BOLD}${WHITE}╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯${NC}\n"
-    
-    echo -e "${WHITE}[${CYAN}1/7${WHITE}] ${GREEN}➜ ${WHITE}Installing dependencies...${NC}"
-    install_dependencies
-    
-    echo -e "${WHITE}[${CYAN}2/7${WHITE}] ${GREEN}➜ ${WHITE}Creating configuration directories...${NC}"
-    mkdir -p "$T3RN_CONFIG_DIR"
-    create_default_rpc_config
-    initialize_custom_rpc_file
-    
-    echo -e "${WHITE}[${CYAN}3/7${WHITE}] ${GREEN}➜ ${WHITE}Select running mode:${NC}"
-    echo -e "${WHITE}[${CYAN}1${WHITE}] ${GREEN}➜ ${WHITE}API Mode${NC}"
-    echo -e "${WHITE}[${CYAN}2${WHITE}] ${GREEN}➜ ${WHITE}RPC Mode${NC}"
-    read -p "➜ " mode_choice
-    
-    local mode="api"
-    if [ "$mode_choice" = "2" ]; then
-        mode="rpc"
-    fi
-    
-    echo -e "${WHITE}[${CYAN}4/7${WHITE}] ${GREEN}➜ ${WHITE}Enter your private key:${NC}"
-    read -p "➜ " private_key
-    
-    # Validate private key
-    if [ ${#private_key} -ne 64 ]; then
-        error_message "Invalid private key length. Must be 64 characters."
-        return 1
-    fi
-    
-    echo -e "${WHITE}[${CYAN}5/7${WHITE}] ${GREEN}➜ ${WHITE}Enter max gas price (gwei) [default: 1000]:${NC}"
-    read -p "➜ " max_gas
-    
-    if [ -z "$max_gas" ]; then
-        max_gas=1000
-    fi
-    
-    echo -e "${WHITE}[${CYAN}6/7${WHITE}] ${GREEN}➜ ${WHITE}Enter metrics port [default: 9090]:${NC}"
-    read -p "➜ " metrics_port
-    
-    if [ -z "$metrics_port" ]; then
-        metrics_port=9090
-    fi
-    
-    # Update environment file
-    update_env_file "$mode" "$private_key" "$max_gas" "$metrics_port"
-    
-    echo -e "${WHITE}[${CYAN}7/7${WHITE}] ${GREEN}➜ ${WHITE}Installing T3RN Executor...${NC}"
-    
-    # Install the T3RN Executor
-    if install_t3rn "$version"; then
-        # Create systemd service
-        local executor_path="$T3RN_DIR/executor/executor/bin/executor"
-        create_systemd_service "$executor_path"
-        
-        # Start the service
-        start_t3rn
-        
-        echo -e "\n${PURPLE}═════════════════════════════════════════════${NC}"
-        echo -e "${GREEN}✓ T3RN Executor successfully installed!${NC}"
-        echo -e "${PURPLE}═════════════════════════════════════════════${NC}\n"
-    fi
 }
