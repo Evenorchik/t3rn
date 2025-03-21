@@ -7,6 +7,40 @@
 # Version: 1.0.0
 #
 
+# Pre-define function prototypes to avoid "command not found" errors
+# This ensures all functions are available regardless of their definition order
+main() { :; }
+configuration_menu() { :; }
+install_wizard() { :; }
+select_version_menu() { :; }
+update_t3rn() { :; }
+show_config() { :; }
+view_logs() { :; }
+remove_t3rn() { :; }
+install_t3rn() { :; }
+change_mode() { :; }
+add_custom_rpc() { :; }
+reset_rpc() { :; }
+change_gas_settings() { :; }
+change_private_key() { :; }
+configure_restart() { :; }
+restart_t3rn() { :; }
+stop_t3rn() { :; }
+start_t3rn() { :; }
+remove_systemd_timer() { :; }
+create_systemd_timer() { :; }
+create_systemd_service() { :; }
+update_env_file() { :; }
+initialize_custom_rpc_file() { :; }
+create_default_rpc_config() { :; }
+fetch_versions() { :; }
+install_dependencies() { :; }
+success_message() { :; }
+info_message() { :; }
+error_message() { :; }
+warning_message() { :; }
+check_command() { :; }
+
 # Text colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -27,6 +61,9 @@ CUSTOM_RPC_FILE="$T3RN_CONFIG_DIR/custom_rpc.conf"
 SERVICE_FILE="/etc/systemd/system/t3rn.service"
 TIMER_SERVICE_FILE="/etc/systemd/system/t3rn-restart.service"
 TIMER_FILE="/etc/systemd/system/t3rn-restart.timer"
+
+# Real function implementations below
+# These override the empty prototypes defined at the beginning of the script
 
 # Function for displaying success messages
 success_message() {
@@ -403,7 +440,7 @@ reset_rpc() {
     
     # If the custom RPC file exists, reset it
     if [ -f "$CUSTOM_RPC_FILE" ]; then
-        echo "RPC_ENDPOINTS='{}'" > "$CUSTOM_RPC_FILE"
+        echo "RPC_ENDPOINTS={}" > "$CUSTOM_RPC_FILE"
     fi
     
     # Update the environment file if in RPC mode
@@ -854,7 +891,7 @@ select_version_menu() {
 # Run the main function when the script is executed
 main
 
-# Removing duplicate installation wizard function that was defined incorrectly later in the script() {
+# End of script() {
     while true; do
         clear
         # Display logo
