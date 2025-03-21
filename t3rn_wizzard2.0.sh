@@ -69,14 +69,7 @@ install_dependencies() {
 create_default_rpc_config() {
     mkdir -p "$T3RN_CONFIG_DIR"
     cat > "$DEFAULT_RPC_FILE" << EOF
-RPC_ENDPOINTS='{
-    "l2rn": ["https://b2n.rpc.caldera.xyz/http"],
-    "arbt": ["https://arbitrum-sepolia.drpc.org", "https://sepolia-rollup.arbitrum.io/rpc"],
-    "bast": ["https://base-sepolia-rpc.publicnode.com", "https://base-sepolia.drpc.org"],
-    "blst": ["https://sepolia.blast.io", "https://endpoints.omniatech.io/v1/blast/sepolia/public"],
-    "opst": ["https://sepolia.optimism.io", "https://optimism-sepolia.drpc.org"],
-    "unit": ["https://unichain-sepolia.drpc.org", "https://sepolia.unichain.org"]
-}'
+RPC_ENDPOINTS={"l2rn": ["https://b2n.rpc.caldera.xyz/http"],"arbt": ["https://arbitrum-sepolia.drpc.org", "https://sepolia-rollup.arbitrum.io/rpc"],"bast": ["https://base-sepolia-rpc.publicnode.com", "https://base-sepolia.drpc.org"],"blst": ["https://sepolia.blast.io", "https://endpoints.omniatech.io/v1/blast/sepolia/public"],"opst": ["https://sepolia.optimism.io", "https://optimism-sepolia.drpc.org"],"unit": ["https://unichain-sepolia.drpc.org", "https://sepolia.unichain.org"]}
 EOF
     success_message "Default RPC configuration created"
 }
@@ -84,7 +77,7 @@ EOF
 # Function to initialize custom RPC file
 initialize_custom_rpc_file() {
     if [ ! -f "$CUSTOM_RPC_FILE" ]; then
-        echo "RPC_ENDPOINTS='{}'" > "$CUSTOM_RPC_FILE"
+        echo "RPC_ENDPOINTS={}" > "$CUSTOM_RPC_FILE"
         success_message "Custom RPC configuration initialized"
     fi
 }
@@ -130,7 +123,7 @@ update_env_file() {
         # Read custom RPC config if available
         rpc_endpoints=$(grep "RPC_ENDPOINTS" "$CUSTOM_RPC_FILE" | cut -d'=' -f2-)
         # If custom RPC is empty, use default
-        if [ "$rpc_endpoints" = "'{}'" ]; then
+        if [ "$rpc_endpoints" = "{}" ]; then
             rpc_endpoints=$(grep "RPC_ENDPOINTS" "$DEFAULT_RPC_FILE" | cut -d'=' -f2-)
         fi
     else
@@ -168,7 +161,7 @@ PRIVATE_KEY_LOCAL=$private_key
 # Enabled networks
 ENABLED_NETWORKS='unichain-sepolia,blast-sepolia,arbitrum-sepolia,base-sepolia,optimism-sepolia,l2rn'
 
-# RPC endpoints
+# RPC endpoints - must be valid JSON without surrounding quotes
 RPC_ENDPOINTS=$rpc_endpoints
 EOF
 
@@ -356,9 +349,9 @@ add_custom_rpc() {
     source "$CUSTOM_RPC_FILE"
     local current_rpc="$RPC_ENDPOINTS"
     
-    # Remove the opening and closing brackets and quotes
-    current_rpc="${current_rpc#\'{\'"
-    current_rpc="${current_rpc%\'}\'}"
+    # Remove the opening and closing brackets
+    current_rpc="${current_rpc#\{}"
+    current_rpc="${current_rpc%\}}"
     
     # Start building new RPC config
     local new_rpc="{"
@@ -384,7 +377,7 @@ add_custom_rpc() {
     new_rpc="$new_rpc}"
     
     # Save to the custom RPC file
-    echo "RPC_ENDPOINTS='$new_rpc'" > "$CUSTOM_RPC_FILE"
+    echo "RPC_ENDPOINTS=$new_rpc" > "$CUSTOM_RPC_FILE"
     
     success_message "Custom RPC endpoints added"
     
