@@ -94,7 +94,13 @@ fetch_versions() {
     info_message "Fetching available versions from GitHub..."
     
     if ! check_command "curl"; then
-        install_dependencies
+        info_message "Installing curl..."
+        sudo apt-get update && sudo apt-get install -y curl jq
+    fi
+    
+    if ! check_command "jq"; then
+        info_message "Installing jq..."
+        sudo apt-get update && sudo apt-get install -y jq
     fi
     
     # Fetch all releases from GitHub API and extract tag names, sort them by version (newest first)
@@ -668,6 +674,99 @@ configure_restart() {
     esac
 }
 
+# Installation wizard function declaration (moved before select_version_menu)
+install_wizard() {
+    local version="$1"
+    
+    clear
+    # Display logo
+    curl -s https://raw.githubusercontent.com/Evenorchik/evenorlogo/refs/heads/main/evenorlogo.sh | bash
+    
+    echo -e "\n${BOLD}${WHITE}╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮${NC}"
+    echo -e "${BOLD}${WHITE}│     Installing T3RN Executor $version    │${NC}"
+    echo -e "${BOLD}${WHITE}╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯${NC}\n"
+    
+    echo -e "${WHITE}[${CYAN}1/7${WHITE}] ${GREEN}➜ ${WHITE}Installing dependencies...${NC}"
+    install_dependencies
+    
+    echo -e "${WHITE}[${CYAN}2/7${WHITE}] ${GREEN}➜ ${WHITE}Creating configuration directories...${NC}"
+    mkdir -p "$T3RN_CONFIG_DIR"
+    create_default_rpc_config
+    initialize_custom_rpc_file
+    
+    echo -e "${WHITE}[${CYAN}3/7${WHITE}] ${GREEN}➜ ${WHITE}Select running mode:${NC}"
+    echo -e "${WHITE}[${CYAN}1${WHITE}] ${GREEN}➜ ${WHITE}API Mode${NC}"
+    echo -e "${WHITE}[${CYAN}2${WHITE}] ${GREEN}➜ ${WHITE}RPC Mode${NC}"
+    read -p "➜ " mode_choice
+    
+    local mode="api"
+    if [ "$mode_choice" = "2" ]; then
+        mode="rpc"
+    fi
+    
+    if [ "$mode" = "api" ]; then
+        echo -e "${WHITE}[${CYAN}4/7${WHITE}] ${GREEN}➜ ${WHITE}Enter your private key:${NC}"
+        read -p "➜ " private_key
+        
+        # Validate private key
+        if [ ${#private_key} -ne 64 ]; then
+            error_message "Invalid private key length. Must be 64 characters."
+            return 1
+        fi
+    else
+        echo -e "${WHITE}[${CYAN}4/7${WHITE}] ${GREEN}➜ ${WHITE}RPC configuration:${NC}"
+        echo -e "${WHITE}[${CYAN}1${WHITE}] ${GREEN}➜ ${WHITE}Use default RPC endpoints${NC}"
+        echo -e "${WHITE}[${CYAN}2${WHITE}] ${GREEN}➜ ${WHITE}Add custom RPC endpoints${NC}"
+        read -p "➜ " rpc_choice
+        
+        if [ "$rpc_choice" = "2" ]; then
+            add_custom_rpc
+        fi
+        
+        echo -e "${WHITE}[${CYAN}4/7${WHITE}] ${GREEN}➜ ${WHITE}Enter your private key:${NC}"
+        read -p "➜ " private_key
+        
+        # Validate private key
+        if [ ${#private_key} -ne 64 ]; then
+            error_message "Invalid private key length. Must be 64 characters."
+            return 1
+        fi
+    fi
+    
+    echo -e "${WHITE}[${CYAN}5/7${WHITE}] ${GREEN}➜ ${WHITE}Enter max gas price (gwei) [default: 1000]:${NC}"
+    read -p "➜ " max_gas
+    
+    if [ -z "$max_gas" ]; then
+        max_gas=1000
+    fi
+    
+    echo -e "${WHITE}[${CYAN}6/7${WHITE}] ${GREEN}➜ ${WHITE}Enter metrics port [default: 9090]:${NC}"
+    read -p "➜ " metrics_port
+    
+    if [ -z "$metrics_port" ]; then
+        metrics_port=9090
+    fi
+    
+    # Update environment file
+    update_env_file "$mode" "$private_key" "$max_gas" "$metrics_port"
+    
+    echo -e "${WHITE}[${CYAN}7/7${WHITE}] ${GREEN}➜ ${WHITE}Installing T3RN Executor...${NC}"
+    
+    # Install the T3RN Executor
+    if install_t3rn "$version"; then
+        # Create systemd service
+        local executor_path="$T3RN_DIR/executor/executor/bin/executor"
+        create_systemd_service "$executor_path"
+        
+        # Start the service
+        start_t3rn
+        
+        echo -e "\n${PURPLE}═════════════════════════════════════════════${NC}"
+        echo -e "${GREEN}✓ T3RN Executor successfully installed!${NC}"
+        echo -e "${PURPLE}═════════════════════════════════════════════${NC}\n"
+    fi
+}
+
 # Function to select version menu
 select_version_menu() {
     local action="$1"
@@ -721,7 +820,9 @@ select_version_menu() {
 }
 
 # Run the main function when the script is executed
-main() {
+main
+
+# Removing duplicate installation wizard function that was defined incorrectly later in the script() {
     while true; do
         clear
         # Display logo
