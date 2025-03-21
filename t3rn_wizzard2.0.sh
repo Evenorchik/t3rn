@@ -459,21 +459,34 @@ change_gas_settings() {
 
 # Function to change private key
 change_private_key() {
-    info_message "Changing private key..."
+    info_message "Изменение приватного ключа..."
     
-    echo -e "${YELLOW}Enter new private key:${NC}"
-    read -p "➜ " new_key
+    local private_key=""
+    local valid_key=false
     
-    # Validate input
-    if [ ${#new_key} -ne 64 ]; then
-        error_message "Invalid private key length. Must be 64 characters."
-        return 1
-    fi
+    while [ "$valid_key" = false ]; do
+        echo -e "${YELLOW}Введите новый приватный ключ (начинается с 0x):${NC}"
+        read -p "➜ " private_key_input
+        
+        # Remove 0x prefix if present
+        if [[ "$private_key_input" == 0x* ]]; then
+            private_key="${private_key_input#0x}"
+        else
+            private_key="$private_key_input"
+        fi
+        
+        # Validate private key
+        if [ ${#private_key} -ne 64 ]; then
+            error_message "Неверная длина приватного ключа. Должно быть 64 символа (без 0x). Попробуйте еще раз."
+        else
+            valid_key=true
+        fi
+    done
     
     # Update the environment file
-    sed -i "s/PRIVATE_KEY_LOCAL=.*/PRIVATE_KEY_LOCAL=$new_key/" "$ENV_FILE"
+    sed -i "s/PRIVATE_KEY_LOCAL=.*/PRIVATE_KEY_LOCAL=$private_key/" "$ENV_FILE"
     
-    success_message "Private key updated"
+    success_message "Приватный ключ обновлен"
     
     # Restart the service to apply new settings
     if systemctl is-active --quiet t3rn; then
@@ -694,7 +707,7 @@ install_wizard() {
     create_default_rpc_config
     initialize_custom_rpc_file
     
-    echo -e "${WHITE}[${CYAN}3/7${WHITE}] ${GREEN}➜ ${WHITE}Select running mode:${NC}"
+    echo -e "${WHITE}[${CYAN}3/7${WHITE}] ${GREEN}➜ ${WHITE}Выберите режим работы ноды:${NC}"
     echo -e "${WHITE}[${CYAN}1${WHITE}] ${GREEN}➜ ${WHITE}API Mode${NC}"
     echo -e "${WHITE}[${CYAN}2${WHITE}] ${GREEN}➜ ${WHITE}RPC Mode${NC}"
     read -p "➜ " mode_choice
@@ -705,42 +718,68 @@ install_wizard() {
     fi
     
     if [ "$mode" = "api" ]; then
-        echo -e "${WHITE}[${CYAN}4/7${WHITE}] ${GREEN}➜ ${WHITE}Enter your private key:${NC}"
-        read -p "➜ " private_key
+        local private_key=""
+        local valid_key=false
         
-        # Validate private key
-        if [ ${#private_key} -ne 64 ]; then
-            error_message "Invalid private key length. Must be 64 characters."
-            return 1
-        fi
+        while [ "$valid_key" = false ]; do
+            echo -e "${WHITE}[${CYAN}4/7${WHITE}] ${GREEN}➜ ${WHITE}Теперь введите ваш приватный ключ (начинается с 0x):${NC}"
+            read -p "➜ " private_key_input
+            
+            # Remove 0x prefix if present
+            if [[ "$private_key_input" == 0x* ]]; then
+                private_key="${private_key_input#0x}"
+            else
+                private_key="$private_key_input"
+            fi
+            
+            # Validate private key
+            if [ ${#private_key} -ne 64 ]; then
+                error_message "Неверная длина приватного ключа. Должно быть 64 символа (без 0x). Попробуйте еще раз."
+            else
+                valid_key=true
+            fi
+        done
     else
-        echo -e "${WHITE}[${CYAN}4/7${WHITE}] ${GREEN}➜ ${WHITE}RPC configuration:${NC}"
-        echo -e "${WHITE}[${CYAN}1${WHITE}] ${GREEN}➜ ${WHITE}Use default RPC endpoints${NC}"
-        echo -e "${WHITE}[${CYAN}2${WHITE}] ${GREEN}➜ ${WHITE}Add custom RPC endpoints${NC}"
+        echo -e "${WHITE}[${CYAN}4/7${WHITE}] ${GREEN}➜ ${WHITE}Выберите конфигурацию RPC:${NC}"
+        echo -e "${WHITE}[${CYAN}1${WHITE}] ${GREEN}➜ ${WHITE}Использовать стандартные RPC-эндпоинты${NC}"
+        echo -e "${WHITE}[${CYAN}2${WHITE}] ${GREEN}➜ ${WHITE}Добавить собственные RPC-эндпоинты${NC}"
         read -p "➜ " rpc_choice
         
         if [ "$rpc_choice" = "2" ]; then
             add_custom_rpc
         fi
         
-        echo -e "${WHITE}[${CYAN}4/7${WHITE}] ${GREEN}➜ ${WHITE}Enter your private key:${NC}"
-        read -p "➜ " private_key
+        local private_key=""
+        local valid_key=false
         
-        # Validate private key
-        if [ ${#private_key} -ne 64 ]; then
-            error_message "Invalid private key length. Must be 64 characters."
-            return 1
-        fi
+        while [ "$valid_key" = false ]; do
+            echo -e "${WHITE}[${CYAN}4/7${WHITE}] ${GREEN}➜ ${WHITE}Теперь введите ваш приватный ключ (начинается с 0x):${NC}"
+            read -p "➜ " private_key_input
+            
+            # Remove 0x prefix if present
+            if [[ "$private_key_input" == 0x* ]]; then
+                private_key="${private_key_input#0x}"
+            else
+                private_key="$private_key_input"
+            fi
+            
+            # Validate private key
+            if [ ${#private_key} -ne 64 ]; then
+                error_message "Неверная длина приватного ключа. Должно быть 64 символа (без 0x). Попробуйте еще раз."
+            else
+                valid_key=true
+            fi
+        done
     fi
     
-    echo -e "${WHITE}[${CYAN}5/7${WHITE}] ${GREEN}➜ ${WHITE}Enter max gas price (gwei) [default: 1000]:${NC}"
+    echo -e "${WHITE}[${CYAN}5/7${WHITE}] ${GREEN}➜ ${WHITE}Укажите максимальную цену газа в gwei [по умолчанию: 1000]:${NC}"
     read -p "➜ " max_gas
     
     if [ -z "$max_gas" ]; then
         max_gas=1000
     fi
     
-    echo -e "${WHITE}[${CYAN}6/7${WHITE}] ${GREEN}➜ ${WHITE}Enter metrics port [default: 9090]:${NC}"
+    echo -e "${WHITE}[${CYAN}6/7${WHITE}] ${GREEN}➜ ${WHITE}Укажите порт для метрик [по умолчанию: 9090]:${NC}"
     read -p "➜ " metrics_port
     
     if [ -z "$metrics_port" ]; then
