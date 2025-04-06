@@ -72,7 +72,7 @@ install_dependencies() {
 create_default_rpc_config() {
     mkdir -p "$T3RN_CONFIG_DIR"
     cat > "$DEFAULT_RPC_FILE" << EOF
-RPC_ENDPOINTS={"l2rn": ["https://b2n.rpc.caldera.xyz/http"],"arbt": ["https://arbitrum-sepolia.drpc.org", "https://sepolia-rollup.arbitrum.io/rpc"],"bast": ["https://base-sepolia-rpc.publicnode.com", "https://base-sepolia.drpc.org"],"blst": ["https://sepolia.blast.io", "https://endpoints.omniatech.io/v1/blast/sepolia/public"],"opst": ["https://sepolia.optimism.io", "https://optimism-sepolia.drpc.org"],"unit": ["https://unichain-sepolia.drpc.org", "https://sepolia.unichain.org"]}
+RPC_ENDPOINTS={"l2rn": ["https://t3rn-b2n.blockpi.network/v1/rpc/public", "https://b2n.rpc.caldera.xyz/http"],"arbt": ["https://arbitrum-sepolia.drpc.org", "https://sepolia-rollup.arbitrum.io/rpc"],"bast": ["https://base-sepolia-rpc.publicnode.com", "https://base-sepolia.drpc.org"],"blst": ["https://sepolia.blast.io", "https://endpoints.omniatech.io/v1/blast/sepolia/public"],"opst": ["https://sepolia.optimism.io", "https://optimism-sepolia.drpc.org"],"unit": ["https://unichain-sepolia.drpc.org", "https://sepolia.unichain.org"]}
 EOF
     success_message "Default RPC configuration created"
 }
@@ -362,7 +362,7 @@ add_custom_rpc() {
     
     # If no l2rn config found in default, add a hardcoded one
     if [ -z "$l2rn_default" ]; then
-        new_rpc="{ \"l2rn\": [\"https://b2n.rpc.caldera.xyz/http\"]"
+        new_rpc="{ \"l2rn\": [\"https://t3rn-b2n.blockpi.network/v1/rpc/public\", \"https://b2n.rpc.caldera.xyz/http\"]" 
     fi
     
     # Loop through networks to get custom RPC (excluding l2rn)
